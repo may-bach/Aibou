@@ -15,5 +15,5 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
-    conversations = relationship("Conversation", back_populates="user")
-    facts = relationship("MemoryFact", back_populates="user")  
+    conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+    facts = relationship("MemoryFact", back_populates="user", cascade="all, delete-orphan")
