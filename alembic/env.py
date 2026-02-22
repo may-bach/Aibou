@@ -16,6 +16,7 @@ from src.db.base import Base
 from src.models.user import User
 from src.models.memory import Conversation, Message, MemoryFact
 
+
 config = context.config
 
 if config.config_file_name is not None:
