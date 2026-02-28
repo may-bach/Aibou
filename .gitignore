@@ -206,5 +206,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Custom Database files
+# Aibou Custom Storage
 *.db
+*.sqlite3
+Storage/
+aibou_vector_db/

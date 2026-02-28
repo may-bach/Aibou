@@ -1,31 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
-from src.api import chat
+
 from src.db.session import get_db
 from src.models.user import User
-from src.models.memory import Conversation, Message, MemoryFact
+from src.schemas.user import UserCreate, UserResponse
 
+router = APIRouter(prefix="/users", tags=["Users"])
 
-app = FastAPI(title="Aibou API")
-app.include_router(chat.router)
-
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    full_name: str | None = None
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    email: str
-    full_name: str | None
-
-    class Config:
-        from_attributes = True
-
-@app.post("/users/")
+@router.post("/", response_model=dict)
 async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     
     result = await db.execute(select(User).where(User.username == user.username))
@@ -40,14 +23,13 @@ async def create_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
         full_name=user.full_name
     )
     
-
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
     
     return {"message": "User created successfully!", "user": new_user.username, "id": new_user.id}
 
-@app.get("/users/{user_id}", response_model=UserResponse)
+@router.get("/{user_id}", response_model=UserResponse)
 async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
     
     result = await db.execute(select(User).where(User.id == user_id))
