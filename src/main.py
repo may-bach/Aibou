@@ -53,9 +53,7 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalars().first()
     
-    # If the ID doesn't exist, throw a 404 Error
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
         
-    # Return the raw database object (Pydantic will automatically convert it to JSON)
     return user
