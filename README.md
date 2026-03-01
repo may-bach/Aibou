@@ -28,5 +28,5 @@ Aibou implements a **Multi Agent System** using **LangGraph**. Instead of a sing
 ## 4. Technical Stack
 * **Orchestration:** LangGraph (Stateful Multi Agent Workflows)
 * **Backend:** FastAPI (High performance Async API)
-* **Database:** MySQL (Async SQLAlchemy) + Alembic
+* **Database:** PostgreSQL (AsyncPG + SQLAlchemy) + Alembic
 * **Infrastructure:** Docker & Docker Compose (Planned)

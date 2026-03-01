@@ -209,5 +209,4 @@ __marimo__/
 # Aibou Custom Storage
 *.db
 *.sqlite3
-Storage/
 aibou_vector_db/

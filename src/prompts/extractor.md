@@ -55,11 +55,13 @@ Use this context to make your memory **richer and more specific**. For example:
 
 ## OUTPUT RULES
 
-- If the message contains extractable personal information: output **one concise third-person sentence** summarizing the memory. Be specific. Use context to infer details when confident.
-- If the message contains **nothing personal** (e.g., "what is 2+2", "explain recursion", "write me a poem") — output exactly: `NONE`
-- Do **not** output `<think>` tags, explanations, preamble, or anything else. Just the sentence or `NONE`.
-
----
+- You must extract ALL distinct facts from the message (e.g., if they mention a workout AND a food preference, you MUST extract both).
+- Output the memory as a single, concise third-person sentence.
+- CRITICAL: DO NOT output any preambles, introductory text, or formatting. 
+- DO NOT say "Here is the extracted memory:" or "**Memory Extraction Output:**". 
+- DO NOT add conversational notes.
+- If the message contains nothing personal, output exactly and only: `NONE`
+"Do not prefix your response with any labels like 'Output:' or 'Summary:'. Just the sentence directly."
 
 ## RELEVANT CONTEXT (user's known history):
 {context}

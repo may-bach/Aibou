@@ -17,8 +17,8 @@ ollama_ef = embedding_functions.OllamaEmbeddingFunction(
     model_name="nomic-embed-text",
 )
 
-chroma_client = chromadb.PersistentClient(path="./Storage/vector")
-rag_collection = chroma_client.get_collection(
+chroma_client = chromadb.PersistentClient(path="./aibou_vector_db")
+rag_collection = chroma_client.get_or_create_collection(
     name="personal_projects",
     embedding_function=ollama_ef
 )
@@ -64,7 +64,7 @@ async def extract_and_store_memory(user_text: str):
 
     try:
         response = await extractor_llm_client.chat.completions.create(
-            model=settings.LOCAL_MODEL_NAME,
+            model=settings.MODEL_EXTRACTOR  ,
             messages=[{"role": "user", "content": extraction_prompt}]
         )
 
