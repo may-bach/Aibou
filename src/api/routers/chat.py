@@ -8,6 +8,7 @@ from src.models.memory import Conversation, Message
 from src.schemas.chat import ChatRequest
 from src.services.memory import extract_and_store_memory, get_rag_context
 from src.services.llm import generate_chat_response
+from src.agents.router import route_prompt
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -49,11 +50,15 @@ async def chat_with_aibou(request: ChatRequest, background_tasks: BackgroundTask
     )
     chat_history = history_result.scalars().all()
 
+    target_model = await route_prompt(request.content)
+    print(f"\n[ROUTER] Assigned prompt to model: {target_model}\n")
+
     injected_context = get_rag_context(request.content, n_results=5)
     
     ai_text = await generate_chat_response(
         chat_history=chat_history,
-        injected_context=injected_context
+        injected_context=injected_context,
+        model_name=target_model
     )
 
     ai_msg = Message(conversation_id=current_chat.id, role="assistant", content=ai_text)
