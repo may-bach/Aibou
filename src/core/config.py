@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://aibou:secret@localhost:5432/aibou_db"
     USE_LOCAL_LLM: bool = True
     LOCAL_LLM_URL: str = "http://localhost:11434"
+    MODEL_ARCHITECT: str = "gpt-oss-20b"
     MODEL_REASONING: str = "deepseek-r1:14b"
     MODEL_CODING: str = "qwen2.5-coder:7b"
     MODEL_CHAT: str = "llama3:8b"

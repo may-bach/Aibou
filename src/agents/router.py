@@ -27,7 +27,9 @@ async def route_prompt(user_text: str) -> str:
         decision = response.choices[0].message.content
         decision = re.sub(r'<think>.*?</think>', '', decision, flags=re.DOTALL).strip().upper()
         
-        if "REASONING" in decision:
+        if "ARCHITECT" in decision:
+            return settings.MODEL_ARCHITECT
+        elif "REASONING" in decision:
             return settings.MODEL_REASONING
         elif "CODING" in decision:
             return settings.MODEL_CODING

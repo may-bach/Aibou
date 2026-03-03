@@ -12,4 +12,5 @@ langchain-ollama
 greenlet
 chromadb 
 pypdf
+openai
 asyncpg
