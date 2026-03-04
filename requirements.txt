@@ -8,7 +8,7 @@ python-dotenv
 langgraph
 langchain
 langchain-community
-langchain-ollama
+langchain-openai
 greenlet
 chromadb 
 pypdf
