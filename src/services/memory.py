@@ -19,7 +19,7 @@ ollama_ef = embedding_functions.OllamaEmbeddingFunction(
 
 chroma_client = chromadb.PersistentClient(path="./aibou_vector_db")
 rag_collection = chroma_client.get_or_create_collection(
-    name="personal_projects",
+    name="aibou_memories",
     embedding_function=ollama_ef
 )
 
@@ -29,7 +29,6 @@ extractor_llm_client = AsyncOpenAI(
 )
 
 def get_rag_context(query_text: str, n_results: int = 5) -> str:
-    """Helper function to cleanly fetch and format ChromaDB context."""
     try:
         results = rag_collection.query(
             query_texts=[query_text],
@@ -49,7 +48,6 @@ def get_rag_context(query_text: str, n_results: int = 5) -> str:
         return ""
 
 async def extract_and_store_memory(user_text: str):
-    """Background task to infer and store new personal facts."""
     current_time = datetime.now().strftime("%A, %b %d, %Y at %I:%M %p")
 
     injected_context = get_rag_context(user_text, n_results=3)
@@ -58,14 +56,16 @@ async def extract_and_store_memory(user_text: str):
         injected_context = "No prior context available."
 
     extraction_prompt = EXTRACTOR_PROMPT_TEMPLATE.format(
-        context=injected_context,
-        user_text=user_text
+        context=injected_context
     )
 
     try:
         response = await extractor_llm_client.chat.completions.create(
             model=settings.MODEL_EXTRACTOR  ,
-            messages=[{"role": "user", "content": extraction_prompt}]
+            messages=[
+                {"role": "system", "content": extraction_prompt},
+                {"role": "user", "content": user_text}
+            ]
         )
 
         ai_text = response.choices[0].message.content

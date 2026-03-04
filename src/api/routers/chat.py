@@ -67,5 +67,5 @@ async def chat_with_aibou(request: ChatRequest, background_tasks: BackgroundTask
 
     return {
         "conversation_id": current_chat.id,
-        "Aibou_response": ai_text
+        "Aibou": ai_text
     }

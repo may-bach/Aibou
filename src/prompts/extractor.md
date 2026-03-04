@@ -67,6 +67,3 @@ Use this context to make your memory **richer and more specific**. For example:
 {context}
 
 ---
-
-## USER'S MESSAGE:
-"{user_text}"
