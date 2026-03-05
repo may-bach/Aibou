@@ -42,10 +42,11 @@ function AppHeader({ externalVisible }: { externalVisible: boolean }) {
 export default function App() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [isThinking, setIsThinking] = useState(false);
+  const [activeNode, setActiveNode] = useState<string | null>(null);
   const [headerVisible, setHeaderVisible] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const abortRef = useRef<AbortController | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number>();
 
   const activeChat = chats.find((c) => c.id === activeChatId) ?? null;
   const hasMessages = (activeChat?.messages.length ?? 0) > 0;
@@ -76,6 +77,92 @@ export default function App() {
     fetchConversations();
     return () => { cancelled = true; };
   }, []);
+
+  // ── WebSocket Connection & Reconnect Logic ──────────────────────────────
+  useEffect(() => {
+    let reconnectDelay = 1000;
+    let shouldReconnect = true;
+
+    function connect() {
+      // Use WS protocol (or WSS if API is HTTPS)
+      const wsUrl = `ws://localhost:8000/chat/ws/${USER_ID}`;
+      const ws = new WebSocket(wsUrl);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        reconnectDelay = 1000; // reset backoff
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+
+          if (payload.type === 'status') {
+            setActiveNode(payload.node);
+            return;
+          }
+
+          if (payload.type === 'complete') {
+            const aiMsg = createMessage('assistant', payload.message);
+
+            setChats((prev) =>
+              prev.map((c) => {
+                // We match either the known DB conversation_id or the active chat currently being viewed
+                // (in case it was a brand new chat local to the client)
+                const isMatch = c.conversationId === payload.conversation_id || c.id === activeChatId;
+                if (!isMatch) return c;
+
+                return {
+                  ...c,
+                  conversationId: payload.conversation_id, // ensure it has the real ID now
+                  title: payload.title || c.title,
+                  messages: [...c.messages, aiMsg],
+                };
+              })
+            );
+            setActiveNode(null);
+            return;
+          }
+
+          if (payload.type === 'error') {
+            console.error('Aibou WS Error:', payload.message);
+            setActiveNode(null);
+            const errMsg = createMessage('assistant', `⚠️ **Error:** ${payload.message}`);
+            setChats((prev) =>
+              prev.map((c) => c.id === activeChatId ? { ...c, messages: [...c.messages, errMsg] } : c)
+            );
+            return;
+          }
+
+        } catch (err) {
+          console.error('Failed to parse WS message:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        if (shouldReconnect) {
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+            connect();
+          }, reconnectDelay);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+      };
+    }
+
+    connect();
+
+    return () => {
+      shouldReconnect = false;
+      window.clearTimeout(reconnectTimeoutRef.current);
+      socketRef.current?.close();
+    };
+  }, [activeChatId]);
 
   // ── Lazy-load messages when switching to an unloaded conversation ─────────
   const handleSelectChat = useCallback(async (id: string) => {
@@ -118,7 +205,7 @@ export default function App() {
     setActiveChatId(null);
   }, []);
 
-  const handleSend = useCallback(async (content: string) => {
+  const handleSend = useCallback((content: string) => {
     let chatId = activeChatId;
     let currentConversationId: number | null = null;
 
@@ -148,68 +235,23 @@ export default function App() {
       )
     );
 
-    setIsThinking(true);
-    abortRef.current = new AbortController();
+    setActiveNode("Supervisor"); // Optimistic initial state
 
-    let aiContent = '';
-    let newConversationId: number | null = null;
-    try {
-      const res = await fetch(`${API}/chat/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: USER_ID,
-          content,
-          ...(currentConversationId ? { conversation_id: currentConversationId } : {}),
-        }),
-        signal: abortRef.current.signal,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail ?? `HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-      aiContent = data.Aibou ?? data.Aibou_response ?? '*(No response)*';
-      newConversationId = data.conversation_id ?? null;
-      // Update chat title for new conversations (backend returns LLM-generated title)
-      if (data.title && chatId) {
-        setChats((prev) =>
-          prev.map((c) =>
-            c.id === chatId ? { ...c, title: data.title } : c
-          )
-        );
-      }
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        aiContent = '*(Stopped)*';
-      } else {
-        const msg = err instanceof Error ? err.message : 'Unknown error';
-        aiContent = `⚠️ **Error:** ${msg}\n\nMake sure the FastAPI backend is running on port 8000.`;
-      }
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        content,
+        conversation_id: currentConversationId
+      }));
+    } else {
+      console.warn('WebSocket is not connected. Message not sent.');
+      setActiveNode(null);
     }
-
-    const aiMsg = createMessage('assistant', aiContent);
-    setChats((prev) =>
-      prev.map((c) => {
-        if (c.id !== chatId) return c;
-        const updatedConvId = newConversationId ?? c.conversationId;
-        // If this is a newly created local chat and we now have the real DB id,
-        // update the id prefix so future requests use the real conversation_id.
-        return {
-          ...c,
-          conversationId: updatedConvId,
-          messages: [...c.messages, aiMsg],
-        };
-      })
-    );
-    setIsThinking(false);
-    abortRef.current = null;
   }, [activeChatId, chats]);
 
   const handleStop = useCallback(() => {
-    abortRef.current?.abort();
+    // WebSockets don't have a direct "abort request" like HTTP fetch, 
+    // but you could send a {"type": "stop"} payload to the backend if implemented.
+    console.log("Stop requested");
   }, []);
 
   const handleDeleteChat = useCallback(async (id: string) => {
@@ -243,13 +285,13 @@ export default function App() {
         <AppHeader externalVisible={headerVisible} />
         <ChatArea
           messages={activeChat?.messages ?? []}
-          isThinking={isThinking}
+          activeNode={activeNode}
           onSuggestion={handleSend}
         />
         <ChatInput
           onSend={handleSend}
           onStop={handleStop}
-          isThinking={isThinking}
+          isThinking={activeNode !== null}
         />
       </div>
     </div>

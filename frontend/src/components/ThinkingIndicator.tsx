@@ -1,6 +1,32 @@
 import { motion } from 'framer-motion';
 
-export function ThinkingIndicator() {
+interface ThinkingIndicatorProps {
+    activeNode: string;
+}
+
+export function ThinkingIndicator({ activeNode }: ThinkingIndicatorProps) {
+    let displayText = "Aibou is thinking";
+    switch (activeNode) {
+        case "Supervisor":
+            displayText = "Aibou is analyzing the request";
+            break;
+        case "Planner":
+            displayText = "Architect is building a plan";
+            break;
+        case "Coder":
+            displayText = "Coder is drafting files";
+            break;
+        case "Executor":
+            displayText = "Testing code in sandbox";
+            break;
+        case "Critic":
+            displayText = "Reviewing execution logs";
+            break;
+        case "Specialist":
+            displayText = "Consulting domain expert";
+            break;
+    }
+
     return (
         <motion.div
             className="thinking-row"
@@ -8,7 +34,7 @@ export function ThinkingIndicator() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
         >
-            <span className="thinking-label">Thinking</span>
+            <span className="thinking-label">{displayText}</span>
             {[0, 0.18, 0.36].map((delay, i) => (
                 <motion.span
                     key={i}

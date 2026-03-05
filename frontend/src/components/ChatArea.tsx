@@ -7,7 +7,7 @@ import type { Message } from '../types';
 
 interface ChatAreaProps {
     messages: Message[];
-    isThinking: boolean;
+    activeNode: string | null;
     onSuggestion: (text: string) => void;
 }
 
@@ -18,12 +18,12 @@ const SUGGESTIONS = [
     'Debug this: list index out of range',
 ];
 
-export function ChatArea({ messages, isThinking, onSuggestion }: ChatAreaProps) {
+export function ChatArea({ messages, activeNode, onSuggestion }: ChatAreaProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages, isThinking]);
+    }, [messages, activeNode]);
 
     return (
         <AnimatePresence mode="wait">
@@ -94,7 +94,7 @@ export function ChatArea({ messages, isThinking, onSuggestion }: ChatAreaProps) 
                         {messages.map((msg) => (
                             <ChatMessage key={msg.id} message={msg} />
                         ))}
-                        {isThinking && <ThinkingIndicator />}
+                        {activeNode && <ThinkingIndicator activeNode={activeNode} />}
                         <div ref={bottomRef} />
                     </div>
                 </motion.div>
