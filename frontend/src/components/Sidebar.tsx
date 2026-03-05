@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, MessageSquare, Trash2 } from 'lucide-react';
 import type { Chat } from '../types';
@@ -11,10 +12,12 @@ interface SidebarProps {
     onNewChat: () => void;
     onDeleteChat: (id: string) => void;
     onTopHover: (v: boolean) => void; // notifies App when sidebar top is hovered
+    isLoadingHistory?: boolean;
 }
 
-export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewChat, onDeleteChat, onTopHover }: SidebarProps) {
+export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewChat, onDeleteChat, onTopHover, isLoadingHistory }: SidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [pinned, setPinned] = useState(true);
     const [hovered, setHovered] = useState(false);
     const prevHasMessages = useRef(false);
@@ -35,6 +38,7 @@ export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewC
     const handleMouseLeave = () => {
         setHovered(false);
         onTopHover(false);
+        setConfirmDeleteId(null); // clear confirmation when sidebar closes
     };
 
     return (
@@ -111,7 +115,12 @@ export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewC
                         transition={{ duration: 0.15 }}
                     >
                         <AnimatePresence initial={false}>
-                            {chats.length === 0 ? (
+                            {isLoadingHistory ? (
+                                <motion.div key="loading" className="sidebar__loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                                    <Loader2 size={14} className="sidebar__loading-icon" />
+                                    <span>Loading…</span>
+                                </motion.div>
+                            ) : chats.length === 0 ? (
                                 <motion.p key="empty" className="sidebar__empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                                     No conversations yet.<br />Start typing to begin!
                                 </motion.p>
@@ -119,32 +128,54 @@ export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewC
                                 chats.map((chat) => (
                                     <motion.div
                                         key={chat.id}
-                                        className={`chat-item ${chat.id === activeChatId ? 'chat-item--active' : ''}`}
+                                        className={`chat-item ${chat.id === activeChatId ? 'chat-item--active' : ''} ${confirmDeleteId === chat.id ? 'chat-item--confirming' : ''}`}
                                         initial={{ opacity: 0, x: -8 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         exit={{ opacity: 0, x: -8, height: 0 }}
                                         transition={{ duration: 0.16 }}
-                                        onClick={() => onSelectChat(chat.id)}
                                         onMouseEnter={() => setHoveredId(chat.id)}
                                         onMouseLeave={() => setHoveredId(null)}
                                     >
-                                        <MessageSquare size={12} className="chat-item__icon" />
-                                        <span className="chat-item__title">{chat.title}</span>
-                                        <AnimatePresence>
-                                            {hoveredId === chat.id && (
-                                                <motion.button
-                                                    key="del"
-                                                    className="chat-item__delete"
-                                                    onClick={(e) => { e.stopPropagation(); onDeleteChat(chat.id); }}
-                                                    initial={{ opacity: 0, scale: 0.8 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    exit={{ opacity: 0, scale: 0.8 }}
-                                                    transition={{ duration: 0.1 }}
+                                        {confirmDeleteId === chat.id ? (
+                                            // Inline confirmation row
+                                            <>
+                                                <span className="chat-item__confirm-label">Delete this chat?</span>
+                                                <button
+                                                    className="chat-item__confirm-yes"
+                                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); onDeleteChat(chat.id); }}
                                                 >
-                                                    <Trash2 size={12} />
-                                                </motion.button>
-                                            )}
-                                        </AnimatePresence>
+                                                    Delete
+                                                </button>
+                                                <button
+                                                    className="chat-item__confirm-no"
+                                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </>
+                                        ) : (
+                                            // Normal chat item row
+                                            <>
+                                                <MessageSquare size={12} className="chat-item__icon" />
+                                                <span className="chat-item__title" onClick={() => onSelectChat(chat.id)}>{chat.title}</span>
+                                                <AnimatePresence>
+                                                    {hoveredId === chat.id && (
+                                                        <motion.button
+                                                            key="del"
+                                                            className="chat-item__delete"
+                                                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(chat.id); }}
+                                                            title="Delete conversation"
+                                                            initial={{ opacity: 0, scale: 0.8 }}
+                                                            animate={{ opacity: 1, scale: 1 }}
+                                                            exit={{ opacity: 0, scale: 0.8 }}
+                                                            transition={{ duration: 0.1 }}
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </motion.button>
+                                                    )}
+                                                </AnimatePresence>
+                                            </>
+                                        )}
                                     </motion.div>
                                 ))
                             )}

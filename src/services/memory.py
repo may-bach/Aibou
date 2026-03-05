@@ -29,6 +29,42 @@ extractor_llm_client = AsyncOpenAI(
     api_key="ollama",
 )
 
+async def generate_conversation_title(user_message: str) -> str:
+    """Generate a short 5-6 word conversation title from the first user message."""
+    try:
+        response = await extractor_llm_client.chat.completions.create(
+            model=settings.MODEL_EXTRACTOR,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Generate a highly concise 3-6 word title summarizing the user's message below. "
+                        "CRITICAL RULES: \n"
+                        "1. ONLY use words relevant to the user's message.\n"
+                        "2. Do NOT hallucinate random topics or events.\n"
+                        "3. Return ONLY the title — no quotes, no punctuation, no preamble."
+                    ),
+                },
+                {"role": "user", "content": user_message[:400]},
+            ],
+            max_tokens=25,
+        )
+        raw = response.choices[0].message.content.strip()
+        # Strip any <think> tags reasoning models might produce
+        clean = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        # Hard cap at 6 words
+        words = clean.split()[:6]
+        return " ".join(words) if words else _fallback_title(user_message)
+    except Exception:
+        return _fallback_title(user_message)
+
+def _fallback_title(text: str) -> str:
+    words = text.split()[:6]
+    title = " ".join(words)
+    return title if len(title) <= 60 else title[:57] + "…"
+
+
+
 async def get_rag_context(query_text: str, n_results: int = 5) -> str:
     try:
         loop = asyncio.get_event_loop()
