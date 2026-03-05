@@ -1,6 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class ChatRequest(BaseModel):
     user_id: int
-    content: str
+    content: str = Field(..., min_length=1, max_length=8000)
     conversation_id: int | None = None

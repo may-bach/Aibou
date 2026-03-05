@@ -9,11 +9,12 @@ from src.core.config import settings
 coder_llm = ChatOpenAI(
     model=settings.MODEL_CODING,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
-    api_key="ollama",
-    temperature=0.2
+    api_key=settings.LOCAL_LLM_API_KEY,
+    temperature=0.2,
+    timeout=120  # 2 min max — raise if your hardware needs more
 )
 
-CODER_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "node_prompts" / "coder.md"
+CODER_PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / "node_prompts" / "coder.md"
 with open(CODER_PROMPT_PATH, "r", encoding="utf-8") as file:
     CODER_PROMPT = file.read()
 
@@ -21,7 +22,16 @@ async def coder_node(state: AibouState) -> dict:
     print("[NODE] Coder is writing...")
     
     messages = state.get("messages", [])
-    prompt_sequence = [SystemMessage(content=CODER_PROMPT)] + list(messages)
+    retry_count = state.get("retry_count", 0)
+    
+    # On retries, trim context to: original request + last 2 messages (latest error/critic)
+    # This prevents the context window from snowballing across attempts
+    if retry_count > 0 and len(messages) > 3:
+        trimmed_messages = [messages[0]] + list(messages[-2:])
+    else:
+        trimmed_messages = list(messages)
+    
+    prompt_sequence = [SystemMessage(content=CODER_PROMPT)] + trimmed_messages
     
     response = await coder_llm.ainvoke(prompt_sequence)
     response_text = response.content

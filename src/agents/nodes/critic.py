@@ -7,11 +7,10 @@ from src.core.config import settings
 critic_llm = ChatOpenAI(
     model=settings.MODEL_ARCHITECT,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
-    api_key="ollama",
+    api_key=settings.LOCAL_LLM_API_KEY,
     temperature=0.1
 )
 
-# Navigate up from src/agents/nodes/critic.py to src/prompts/...
 CRITIC_PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "node_prompts" / "critic.md"
 with open(CRITIC_PROMPT_PATH, "r", encoding="utf-8") as file:
     CRITIC_PROMPT = file.read()

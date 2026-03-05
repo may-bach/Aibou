@@ -3,17 +3,20 @@ import { motion } from 'framer-motion';
 export function ThinkingIndicator() {
     return (
         <motion.div
-            className="flex items-center gap-1.5 px-4 py-3"
-            initial={{ opacity: 0, y: 8 }}
+            className="thinking-row"
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+            transition={{ duration: 0.2 }}
         >
-            <div className="flex items-center gap-[5px] bg-zinc-800 border border-zinc-700/60 rounded-2xl px-4 py-3">
-                <span className="text-xs text-zinc-400 mr-2 font-medium">Aibou is thinking</span>
-                <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
-                <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
-                <span className="thinking-dot w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" />
-            </div>
+            <span className="thinking-label">Thinking</span>
+            {[0, 0.18, 0.36].map((delay, i) => (
+                <motion.span
+                    key={i}
+                    className="thinking-dot"
+                    animate={{ y: [0, -5, 0], opacity: [0.4, 1, 0.4] }}
+                    transition={{ duration: 1.1, delay, repeat: Infinity, ease: 'easeInOut' }}
+                />
+            ))}
         </motion.div>
     );
 }

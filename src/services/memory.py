@@ -1,3 +1,4 @@
+import asyncio
 import chromadb
 from chromadb.utils import embedding_functions
 from openai import AsyncOpenAI
@@ -28,11 +29,12 @@ extractor_llm_client = AsyncOpenAI(
     api_key="ollama",
 )
 
-def get_rag_context(query_text: str, n_results: int = 5) -> str:
+async def get_rag_context(query_text: str, n_results: int = 5) -> str:
     try:
-        results = rag_collection.query(
-            query_texts=[query_text],
-            n_results=n_results
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            None,
+            lambda: rag_collection.query(query_texts=[query_text], n_results=n_results)
         )
         
         context_docs = []
@@ -50,7 +52,7 @@ def get_rag_context(query_text: str, n_results: int = 5) -> str:
 async def extract_and_store_memory(user_text: str):
     current_time = datetime.now().strftime("%A, %b %d, %Y at %I:%M %p")
 
-    injected_context = get_rag_context(user_text, n_results=3)
+    injected_context = await get_rag_context(user_text, n_results=3)
     
     if injected_context == "":
         injected_context = "No prior context available."

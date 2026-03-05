@@ -1,38 +1,47 @@
-import { useRef, useState, useCallback } from 'react';
-import { ArrowUp } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowUp, Square } from 'lucide-react';
 
 interface ChatInputProps {
     onSend: (content: string) => void;
+    onStop: () => void;
     isThinking: boolean;
 }
 
-export function ChatInput({ onSend, isThinking }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, isThinking }: ChatInputProps) {
     const [value, setValue] = useState('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Auto-resize textarea to fit content — single source of truth
+    const resize = () => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+    };
+
+    useEffect(() => {
+        resize();
+    }, [value]);
 
     const handleSend = useCallback(() => {
         const trimmed = value.trim();
         if (!trimmed || isThinking) return;
         onSend(trimmed);
         setValue('');
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-        }
+        // Reset height after clearing
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
     }, [value, isThinking, onSend]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
     };
 
     const canSend = value.trim().length > 0 && !isThinking;
 
     return (
-        <div className="px-4 pb-4 pt-2">
-            <div className="relative flex items-end gap-2 bg-zinc-900 border border-zinc-700/60 rounded-2xl px-4 py-3 shadow-[inset_0_1px_4px_rgba(0,0,0,0.4)] focus-within:border-indigo-500/50 focus-within:shadow-[inset_0_1px_4px_rgba(0,0,0,0.4),0_0_0_1px_rgba(99,102,241,0.15)] transition-all duration-200">
+        <div className="input-area">
+            <div className={`input-box ${isThinking ? 'input-box--active' : ''}`}>
                 <textarea
                     ref={textareaRef}
                     value={value}
@@ -41,25 +50,41 @@ export function ChatInput({ onSend, isThinking }: ChatInputProps) {
                     placeholder="Message Aibou..."
                     rows={1}
                     disabled={isThinking}
-                    className="flex-1 resize-none bg-transparent text-sm text-zinc-100 placeholder-zinc-500 outline-none leading-relaxed max-h-48 overflow-y-auto disabled:opacity-50"
-                    style={{ minHeight: '24px' }}
+                    className="input-textarea"
                 />
-                <motion.button
-                    onClick={handleSend}
-                    disabled={!canSend}
-                    whileHover={canSend ? { scale: 1.05 } : {}}
-                    whileTap={canSend ? { scale: 0.95 } : {}}
-                    className={`flex-shrink-0 ml-1 mb-0.5 w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 send-btn-glow ${canSend
-                            ? 'bg-indigo-600 text-white cursor-pointer shadow-md shadow-indigo-900/40'
-                            : 'bg-zinc-700/50 text-zinc-500 cursor-not-allowed'
-                        }`}
-                >
-                    <ArrowUp size={16} strokeWidth={2.5} />
-                </motion.button>
+                <AnimatePresence mode="wait">
+                    {isThinking ? (
+                        <motion.button
+                            key="stop"
+                            className="send-btn send-btn--stop"
+                            onClick={onStop}
+                            title="Stop"
+                            initial={{ scale: 0.7, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.7, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                        >
+                            <Square size={13} fill="currentColor" />
+                        </motion.button>
+                    ) : (
+                        <motion.button
+                            key="send"
+                            className={`send-btn ${canSend ? 'send-btn--active' : 'send-btn--disabled'}`}
+                            onClick={handleSend}
+                            disabled={!canSend}
+                            title="Send"
+                            initial={{ scale: 0.7, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.7, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            whileTap={canSend ? { scale: 0.9 } : {}}
+                        >
+                            <ArrowUp size={16} strokeWidth={2.5} />
+                        </motion.button>
+                    )}
+                </AnimatePresence>
             </div>
-            <p className="text-center text-[10px] text-zinc-600 mt-2">
-                Aibou can make mistakes. Shift+Enter for new line.
-            </p>
+            <p className="input-hint">Shift+Enter for new line · Aibou runs locally</p>
         </div>
     );
 }

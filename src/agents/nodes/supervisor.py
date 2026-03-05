@@ -7,7 +7,7 @@ from src.core.config import settings
 supervisor_llm = ChatOpenAI(
     model=settings.MODEL_ARCHITECT,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
-    api_key="ollama",
+    api_key=settings.LOCAL_LLM_API_KEY,
     temperature=0.0
 )
 
@@ -28,5 +28,5 @@ async def supervisor_node(state: AibouState) -> dict:
     
     return {
         "current_agent": "Supervisor",
-        "messages": [AIMessage(content=f"Routing to: {decision}")]
+        "messages": [AIMessage(content=decision)] 
     }

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
 import { ChatInput } from './components/ChatInput';
@@ -8,144 +8,156 @@ let messageCounter = 0;
 let chatCounter = 0;
 
 function createMessage(role: Message['role'], content: string): Message {
-  return {
-    id: `msg-${++messageCounter}`,
-    role,
-    content,
-    timestamp: new Date(),
-  };
+  return { id: `msg-${++messageCounter}`, role, content, timestamp: new Date() };
 }
 
-function createChat(firstMessage?: string): Chat {
+function createChat(firstMessage: string): Chat {
   return {
     id: `chat-${++chatCounter}`,
-    title: firstMessage ? truncateTitle(firstMessage) : 'New Chat',
+    title: truncateTitle(firstMessage),
     messages: [],
+    conversationId: null,
     createdAt: new Date(),
   };
 }
 
 function truncateTitle(text: string): string {
-  return text.length > 32 ? text.slice(0, 32) + '…' : text;
+  return text.length > 40 ? text.slice(0, 40) + '…' : text;
+}
+
+// Floating header that fades in when hovering near the top-left of the main panel OR sidebar
+function AppHeader({ externalVisible }: { externalVisible: boolean }) {
+  const [selfVisible, setSelfVisible] = useState(false);
+  const visible = selfVisible || externalVisible;
+  return (
+    <div
+      className="app-header-zone"
+      onMouseEnter={() => setSelfVisible(true)}
+      onMouseLeave={() => setSelfVisible(false)}
+    >
+      <span className={`app-header-label ${visible ? 'app-header-label--visible' : ''}`}>
+        Aibou
+      </span>
+    </div>
+  );
 }
 
 export default function App() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isThinking, setIsThinking] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const activeChat = chats.find((c) => c.id === activeChatId) ?? null;
+  const hasMessages = (activeChat?.messages.length ?? 0) > 0;
 
+  // New Chat: just navigate to the home screen — no sidebar entry created yet
   const handleNewChat = useCallback(() => {
-    const chat = createChat();
-    setChats((prev) => [chat, ...prev]);
-    setActiveChatId(chat.id);
+    setActiveChatId(null);
   }, []);
 
   const handleSend = useCallback(async (content: string) => {
     let chatId = activeChatId;
+    let currentConversationId: number | null = null;
 
+    // Only create a chat entry when a message is actually sent
     if (!chatId) {
       const chat = createChat(content);
       setChats((prev) => [chat, ...prev]);
       setActiveChatId(chat.id);
       chatId = chat.id;
+    } else {
+      currentConversationId = chats.find(c => c.id === chatId)?.conversationId ?? null;
     }
 
     const userMsg = createMessage('user', content);
-
     setChats((prev) =>
       prev.map((c) =>
         c.id === chatId
-          ? {
-            ...c,
-            title: c.messages.length === 0 ? truncateTitle(content) : c.title,
-            messages: [...c.messages, userMsg],
-          }
+          ? { ...c, messages: [...c.messages, userMsg] }
           : c
       )
     );
 
     setIsThinking(true);
+    abortRef.current = new AbortController();
 
-    let aiContent = "";
+    let aiContent = '';
+    let newConversationId: number | null = null;
     try {
-      // Send the real request to your FastAPI backend
-      const response = await fetch("http://localhost:8000/chat/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const res = await fetch('http://localhost:8000/chat/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: 1, // Your user ID from the database
-          content: content
+          user_id: 1,
+          content,
+          ...(currentConversationId ? { conversation_id: currentConversationId } : {}),
         }),
+        signal: abortRef.current.signal,
       });
 
-      if (!response.ok) throw new Error("Network error");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? `HTTP ${res.status}`);
+      }
 
-      const data = await response.json();
-      aiContent = data.Aibou_response; // Get the real response from the swarm
-
-    } catch (error) {
-      console.error("Error talking to Aibou:", error);
-      aiContent = "⚠️ **Connection Error:** Could not reach the local Aibou backend. Is the FastAPI server running on port 8000?";
+      const data = await res.json();
+      aiContent = data.Aibou ?? data.Aibou_response ?? '*(No response)*';
+      newConversationId = data.conversation_id ?? null;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        aiContent = '*(Stopped)*';
+      } else {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        aiContent = `⚠️ **Error:** ${msg}\n\nMake sure the FastAPI backend is running on port 8000.`;
+      }
     }
 
     const aiMsg = createMessage('assistant', aiContent);
-
     setChats((prev) =>
       prev.map((c) =>
         c.id === chatId
-          ? { ...c, messages: [...c.messages, aiMsg] }
+          ? { ...c, conversationId: newConversationId ?? c.conversationId, messages: [...c.messages, aiMsg] }
           : c
       )
     );
     setIsThinking(false);
-  }, [activeChatId]);
+    abortRef.current = null;
+  }, [activeChatId, chats]);
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleDeleteChat = useCallback((id: string) => {
     setChats((prev) => prev.filter((c) => c.id !== id));
-    if (activeChatId === id) {
-      setActiveChatId(null);
-    }
+    if (activeChatId === id) setActiveChatId(null);
   }, [activeChatId]);
 
   return (
-    <div className="flex h-screen w-screen bg-zinc-950 text-zinc-100 overflow-hidden">
+    <div className="app-shell">
       <Sidebar
         chats={chats}
         activeChatId={activeChatId}
+        hasMessages={hasMessages}
         onSelectChat={setActiveChatId}
         onNewChat={handleNewChat}
         onDeleteChat={handleDeleteChat}
+        onTopHover={setHeaderVisible}
       />
-
-      {/* Main area */}
-      <div className="flex flex-col flex-1 min-w-0 h-full">
-        {/* Topbar */}
-        <header className="flex items-center h-14 px-5 border-b border-zinc-800/60 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-zinc-200">
-              {activeChat ? activeChat.title : 'Aibou'}
-            </span>
-            {isThinking && (
-              <span className="text-[10px] text-indigo-400 font-medium animate-pulse">● thinking</span>
-            )}
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-lg">
-              local model
-            </span>
-          </div>
-        </header>
-
-        {/* Chat + Input */}
+      <div className="main-panel">
+        <AppHeader externalVisible={headerVisible} />
         <ChatArea
           messages={activeChat?.messages ?? []}
           isThinking={isThinking}
+          onSuggestion={handleSend}
         />
-        <ChatInput onSend={handleSend} isThinking={isThinking} />
+        <ChatInput
+          onSend={handleSend}
+          onStop={handleStop}
+          isThinking={isThinking}
+        />
       </div>
     </div>
   );

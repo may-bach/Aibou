@@ -7,7 +7,7 @@ from src.core.config import settings
 planner_llm = ChatOpenAI(
     model=settings.MODEL_ARCHITECT,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
-    api_key="ollama",
+    api_key=settings.LOCAL_LLM_API_KEY,
     temperature=0.3
 )
 
@@ -27,5 +27,6 @@ async def planner_node(state: AibouState) -> dict:
     
     return {
         "messages": [AIMessage(content=f"Project Plan:\n{response.content}")],
-        "current_agent": "Planner"
+        "current_agent": "Planner",
+        "retry_count": 0   # Reset so previous coding attempts don't bleed over
     }

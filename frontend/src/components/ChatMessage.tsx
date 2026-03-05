@@ -1,59 +1,94 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { Copy, Check } from 'lucide-react';
 import type { Message } from '../types';
 
-interface ChatMessageProps {
-    message: Message;
+function CopyButton({ text }: { text: string }) {
+    const [copied, setCopied] = useState(false);
+    const handle = async () => {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+        <button className="copy-btn" onClick={handle} title="Copy">
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            <span>{copied ? 'Copied' : 'Copy'}</span>
+        </button>
+    );
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
-    const isUser = message.role === 'user';
+const msgVariants = {
+    hidden: { opacity: 0, y: 14, scale: 0.98 },
+    visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.22, ease: [0.25, 0.1, 0.25, 1] } },
+};
 
-    if (isUser) {
-        return (
-            <motion.div
-                className="flex justify-end px-4 py-1.5"
-                initial={{ opacity: 0, y: 10, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
-            >
-                <div className="max-w-[75%]">
-                    <div className="bg-indigo-600/80 text-zinc-50 rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed shadow-lg shadow-indigo-950/30 border border-indigo-500/30">
-                        {message.content}
-                    </div>
-                    <p className="text-right text-[10px] text-zinc-600 mt-1 pr-0.5">
-                        {formatTime(message.timestamp)}
-                    </p>
-                </div>
-            </motion.div>
-        );
-    }
+export function ChatMessage({ message }: { message: Message }) {
+    const isUser = message.role === 'user';
 
     return (
         <motion.div
-            className="flex justify-start px-4 py-1.5"
-            initial={{ opacity: 0, y: 10, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className={`msg-row ${isUser ? 'msg-row--user' : 'msg-row--ai'}`}
+            variants={msgVariants}
+            initial="hidden"
+            animate="visible"
         >
-            {/* Avatar */}
-            <div className="flex-shrink-0 mr-3 mt-0.5">
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-md">
-                    <span className="text-[10px] font-bold text-white">AI</span>
-                </div>
-            </div>
-            <div className="max-w-[80%]">
-                <div className="bg-zinc-800/80 border border-zinc-800 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
-                    <div className="prose prose-sm prose-invert max-w-none text-sm leading-relaxed text-zinc-200">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <div className={`msg-bubble ${isUser ? 'msg-bubble--user' : 'msg-bubble--ai'}`}>
+                {isUser ? (
+                    <p className="msg-text">{message.content}</p>
+                ) : (
+                    <>
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                code({ className, children, ...props }) {
+                                    const match = /language-(\w+)/.exec(className || '');
+                                    const codeText = String(children).replace(/\n$/, '');
+                                    if (match) {
+                                        return (
+                                            <div className="code-block">
+                                                <div className="code-block__header">
+                                                    <span className="code-block__lang">{match[1]}</span>
+                                                    <CopyButton text={codeText} />
+                                                </div>
+                                                <SyntaxHighlighter
+                                                    style={oneDark}
+                                                    language={match[1]}
+                                                    PreTag="div"
+                                                    customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', fontSize: '13px', background: '#0d0d0d' }}
+                                                    {...(props as object)}
+                                                >
+                                                    {codeText}
+                                                </SyntaxHighlighter>
+                                            </div>
+                                        );
+                                    }
+                                    return <code className="inline-code" {...props}>{children}</code>;
+                                },
+                                p: ({ children }) => <p className="md-p">{children}</p>,
+                                ul: ({ children }) => <ul className="md-ul">{children}</ul>,
+                                ol: ({ children }) => <ol className="md-ol">{children}</ol>,
+                                li: ({ children }) => <li className="md-li">{children}</li>,
+                                h1: ({ children }) => <h1 className="md-h1">{children}</h1>,
+                                h2: ({ children }) => <h2 className="md-h2">{children}</h2>,
+                                h3: ({ children }) => <h3 className="md-h3">{children}</h3>,
+                                blockquote: ({ children }) => <blockquote className="md-blockquote">{children}</blockquote>,
+                                strong: ({ children }) => <strong className="md-strong">{children}</strong>,
+                                hr: () => <hr className="md-hr" />,
+                            }}
+                        >
                             {message.content}
                         </ReactMarkdown>
-                    </div>
-                </div>
-                <p className="text-[10px] text-zinc-600 mt-1 pl-0.5">
-                    {formatTime(message.timestamp)}
-                </p>
+                        <div className="msg-meta">
+                            <span className="msg-time">{formatTime(message.timestamp)}</span>
+                            <CopyButton text={message.content} />
+                        </div>
+                    </>
+                )}
             </div>
         </motion.div>
     );

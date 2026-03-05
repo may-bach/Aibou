@@ -1,3 +1,6 @@
+# LEGACY / UNUSED: This service was used before the LangGraph swarm was introduced.
+# generate_chat_response() is no longer called anywhere in the app.
+# Kept for reference. Safe to delete in a future cleanup pass.
 from openai import AsyncOpenAI
 from pathlib import Path
 import re

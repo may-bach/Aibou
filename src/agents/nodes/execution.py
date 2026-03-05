@@ -1,9 +1,10 @@
 import asyncio
+import os
 import tempfile
 from src.agents.state import AibouState
 
 async def execution_node(state: AibouState) -> dict:
-    print("[NODE] Execution (Sandbox) is running...")
+    print("[NODE] Executing...")
     
     current_code = state.get("current_code", "")
     if not current_code:
@@ -28,6 +29,8 @@ async def execution_node(state: AibouState) -> dict:
         
     except Exception as e:
         execution_output = f"Execution failed: {str(e)}"
+    finally:
+        os.unlink(temp_filepath)  # Always clean up the temp file
         
     return {
         "execution_output": execution_output,

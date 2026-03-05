@@ -1,6 +1,10 @@
 {
-  "include": ["src", "main.py"],
-  "pythonVersion": "3.11",
+  "include": [
+    "src",
+    "main.py"
+  ],
+  "pythonVersion": "3.12",
+  "pythonPath": "c:/Aibou/venv/Scripts/python.exe",
   "venvPath": ".",
   "venv": "venv"
 }
