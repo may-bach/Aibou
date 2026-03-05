@@ -15,6 +15,8 @@ SUPERVISOR_PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompt
 with open(SUPERVISOR_PROMPT_PATH, "r", encoding="utf-8") as file:
     SUPERVISOR_PROMPT = file.read()
 
+import json
+
 async def supervisor_node(state: AibouState) -> dict:
     print("[NODE] Supervisor is routing...")
     
@@ -23,10 +25,26 @@ async def supervisor_node(state: AibouState) -> dict:
     system_prompt = SystemMessage(content=SUPERVISOR_PROMPT)
     prompt_sequence = [system_prompt] + list(messages)
     
+    # We enforce JSON output formatting via LangChain/OpenAI if supported,
+    # but since local LLMs might be quirky, we just ask for JSON in the prompt and parse it.
     response = await supervisor_llm.ainvoke(prompt_sequence)
-    decision = response.content.strip().upper()
+    raw_output = response.content.strip()
     
+    # Strip potential markdown codeblock formatting if the LLM adds it anyway
+    if raw_output.startswith("```json"):
+        raw_output = raw_output[7:-3].strip()
+    elif raw_output.startswith("```"):
+        raw_output = raw_output[3:-3].strip()
+        
+    try:
+        decision_data = json.loads(raw_output)
+        route = decision_data.get("route", "FINISH")
+    except Exception as e:
+        print(f"[WARNING] Supervisor produced invalid JSON: {raw_output}. Defaulting to FINISH. Error: {e}")
+        route = "FINISH"
+    
+    print(f"       -> Decided route: {route}")
     return {
         "current_agent": "Supervisor",
-        "messages": [AIMessage(content=decision)] 
+        "next_route": route
     }

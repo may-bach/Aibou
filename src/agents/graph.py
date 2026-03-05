@@ -10,28 +10,27 @@ from src.agents.nodes.specialist import specialist_node
 
 
 def supervisor_router(state: AibouState):
+    route = state.get("next_route", "FINISH")
+    if route == "FINISH":
+        return END
+    
+    # Fallback validation just in case the LLM outputs a totally invalid route
+    valid_routes = ["Planner", "Coder", "Specialist"]
+    if route in valid_routes:
+        return route
+    return END
+
+def critic_router(state: AibouState):
     messages = state.get("messages", [])
     if not messages:
         return END
         
-    last_message = messages[-1].content.strip().upper()
-    
-    if any(tag in last_message for tag in ["PLAN", "ARCHITECT"]):
-        return "Planner"
-    elif any(tag in last_message for tag in ["COD"]):  # matches CODER, CODING, CODE
-        return "Coder"
-    elif any(tag in last_message for tag in ["MATH", "FINANCE", "CREATIVE", "REASONING", "CHAT", "SCIENCE"]):
-        return "Specialist"
-    else:
-        return END
-
-def critic_router(state: AibouState):
-    messages = state.get("messages", [])
-    last_message = messages[-1].content
+    last_message = messages[-1].content.upper()
     retry_count = state.get("retry_count", 0)
     
     if "PASS" in last_message:
-        return "Supervisor"
+        print("\n[CRITIC] Code passed! Ending execution.\n")
+        return END
     
     if retry_count >= 3:
         print(f"\n[KILL SWITCH ACTIVATED] Maximum retries ({retry_count}) reached.\n")

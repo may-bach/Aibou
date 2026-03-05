@@ -79,3 +79,5 @@ class AibouState(TypedDict):
     retry_count: int
     
     requires_human_approval: bool
+    
+    next_route: str
