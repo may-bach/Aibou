@@ -25,7 +25,8 @@ async def specialist_node(state: AibouState) -> dict:
     specialist_llm = ChatOpenAI(
         model=target_model,
         base_url=f"{settings.LOCAL_LLM_URL}/v1",
-        api_key=settings.LOCAL_LLM_API_KEY
+        api_key=settings.LOCAL_LLM_API_KEY,
+        timeout=120
     )
     
     response = await specialist_llm.ainvoke(messages)

@@ -109,11 +109,28 @@ body {
 /* ─── Sidebar ────────────────────────────────────────────────────────────────── */
 .sidebar {
   height: 100%;
-  background: var(--bg);
   flex-shrink: 0;
+  position: relative;
+}
+
+.sidebar__inner {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar__hit-area {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--sidebar-w);
+  height: 100%;
+  z-index: 1;
 }
 
 .sidebar__header {
@@ -534,6 +551,71 @@ body {
   width: 100%;
 }
 
+/* ─── Inline Edit ──────────────────────────────────────────────────────────── */
+.edit-message-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.edit-message-textarea {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 80px;
+  outline: none;
+  transition: border-color var(--t);
+}
+
+.edit-message-textarea:focus {
+  border-color: #3a3a3a;
+}
+
+.edit-message-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.edit-action-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background var(--t), color var(--t);
+}
+
+.edit-action-btn--cancel {
+  background: transparent;
+  color: var(--text-3);
+  border-color: var(--border);
+}
+
+.edit-action-btn--cancel:hover {
+  background: var(--surface2);
+  color: var(--text-2);
+}
+
+.edit-action-btn--save {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.edit-action-btn--save:hover {
+  background: #d4d4d4;
+}
+
 /* Show meta only on hover */
 .msg-meta {
   display: flex;
@@ -548,9 +630,10 @@ body {
   opacity: 1;
 }
 
-.msg-meta--user {
-  justify-content: flex-end;
-  margin-top: 4px;
+.msg-meta--user-outside {
+  align-self: flex-start;
+  margin-top: 10px;
+  margin-right: 8px;
 }
 
 .msg-time {

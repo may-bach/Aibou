@@ -26,8 +26,9 @@ FIX INSTRUCTIONS:
 
 
 **IF THE CODE SUCCEEDED:**
+STATUS: PASS
 
-PASS
+**NEVER output STATUS: PASS if there is a Traceback or SyntaxError in the execution log. You MUST output STATUS: REJECTED.**
 
 
 *Note: Do not write the corrected code yourself. Your job is to instruct the Coder node.*

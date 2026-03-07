@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, MessageSquare, Trash2 } from 'lucide-react';
@@ -20,14 +20,14 @@ export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewC
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [pinned, setPinned] = useState(true);
     const [hovered, setHovered] = useState(false);
-    const prevHasMessages = useRef(false);
+    const [prevHasMessages, setPrevHasMessages] = useState(hasMessages);
 
-    useEffect(() => {
-        if (hasMessages && !prevHasMessages.current) {
+    if (hasMessages !== prevHasMessages) {
+        setPrevHasMessages(hasMessages);
+        if (hasMessages && !prevHasMessages) {
             setPinned(false);
         }
-        prevHasMessages.current = hasMessages;
-    }, [hasMessages]);
+    }
 
     const isOpen = pinned || hovered;
 
@@ -49,158 +49,163 @@ export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewC
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
         >
-            <div className="sidebar__header">
-                {/* Logo — always visible; animates margin left/right with sidebar */}
-                <motion.div
-                    className="sidebar__logo-icon"
-                    animate={{ marginLeft: isOpen ? 17 : 15 }}
-                    transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                >
-                    <img src="/Aibou_2-removebg-preview.png" alt="Aibou Logo" className="sidebar__logo-image" />
-                </motion.div>
+            <div className="sidebar__inner">
+                <div className="sidebar__header">
+                    {/* Logo — always visible; animates margin left/right with sidebar */}
+                    <motion.div
+                        className="sidebar__logo-icon"
+                        animate={{ marginLeft: isOpen ? 17 : 15 }}
+                        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                    >
+                        <img src="/Aibou_2-removebg-preview.png" alt="Aibou Logo" className="sidebar__logo-image" />
+                    </motion.div>
 
-                {/* Pin button — only visible when expanded */}
+                    {/* Pin button — only visible when expanded */}
+                    <AnimatePresence>
+                        {isOpen && (
+                            <motion.button
+                                className="icon-btn"
+                                onClick={() => setPinned(p => !p)}
+                                title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.15 }}
+                                whileTap={{ scale: 0.9 }}
+                            >
+                                <Plus
+                                    size={15}
+                                    style={{ transform: pinned ? 'rotate(45deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                                />
+                            </motion.button>
+                        )}
+                    </AnimatePresence>
+                </div>
+
+                <div className="sidebar__new">
+                    <motion.button
+                        className={`new-chat-btn ${isOpen ? 'new-chat-btn--full' : 'new-chat-btn--icon'}`}
+                        onClick={onNewChat}
+                        title="New Chat"
+                        whileTap={{ scale: 0.96 }}
+                    >
+                        <Plus size={15} />
+                        <AnimatePresence>
+                            {isOpen && (
+                                <motion.span
+                                    initial={{ opacity: 0, width: 0 }}
+                                    animate={{ opacity: 1, width: 'auto' }}
+                                    exit={{ opacity: 0, width: 0 }}
+                                    transition={{ duration: 0.15 }}
+                                    style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}
+                                >
+                                    New Chat
+                                </motion.span>
+                            )}
+                        </AnimatePresence>
+                    </motion.button>
+                </div>
+
                 <AnimatePresence>
                     {isOpen && (
-                        <motion.button
-                            className="icon-btn"
-                            onClick={() => setPinned(p => !p)}
-                            title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
+                        <motion.nav
+                            className="sidebar__list"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.15 }}
-                            whileTap={{ scale: 0.9 }}
                         >
-                            <Plus
-                                size={15}
-                                style={{ transform: pinned ? 'rotate(45deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
-                            />
-                        </motion.button>
+                            <AnimatePresence initial={false}>
+                                {isLoadingHistory ? (
+                                    <motion.div key="loading" className="sidebar__loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                                        <Loader2 size={14} className="sidebar__loading-icon" />
+                                        <span>Loading…</span>
+                                    </motion.div>
+                                ) : chats.length === 0 ? (
+                                    <motion.p key="empty" className="sidebar__empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                                        No conversations yet.<br />Start typing to begin!
+                                    </motion.p>
+                                ) : (
+                                    chats.map((chat) => (
+                                        <motion.div
+                                            key={chat.id}
+                                            className={`chat-item ${chat.id === activeChatId ? 'chat-item--active' : ''} ${confirmDeleteId === chat.id ? 'chat-item--confirming' : ''}`}
+                                            initial={{ opacity: 0, x: -8 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            exit={{ opacity: 0, x: -8, height: 0 }}
+                                            transition={{ duration: 0.16 }}
+                                            onMouseEnter={() => setHoveredId(chat.id)}
+                                            onMouseLeave={() => setHoveredId(null)}
+                                        >
+                                            {confirmDeleteId === chat.id ? (
+                                                // Inline confirmation row
+                                                <>
+                                                    <span className="chat-item__confirm-label">Delete this chat?</span>
+                                                    <button
+                                                        className="chat-item__confirm-yes"
+                                                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); onDeleteChat(chat.id); }}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                    <button
+                                                        className="chat-item__confirm-no"
+                                                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                // Normal chat item row
+                                                <>
+                                                    <MessageSquare size={12} className="chat-item__icon" />
+                                                    <span className="chat-item__title" onClick={() => onSelectChat(chat.id)}>{chat.title}</span>
+                                                    <AnimatePresence>
+                                                        {hoveredId === chat.id && (
+                                                            <motion.button
+                                                                key="del"
+                                                                className="chat-item__delete"
+                                                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(chat.id); }}
+                                                                title="Delete conversation"
+                                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                                transition={{ duration: 0.1 }}
+                                                            >
+                                                                <Trash2 size={12} />
+                                                            </motion.button>
+                                                        )}
+                                                    </AnimatePresence>
+                                                </>
+                                            )}
+                                        </motion.div>
+                                    ))
+                                )}
+                            </AnimatePresence>
+                        </motion.nav>
+                    )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                    {isOpen && (
+                        <motion.div
+                            className="sidebar__footer"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.12 }}
+                        >
+                            <div className="user-pill">
+                                <div className="user-pill__avatar">U</div>
+                                <span className="user-pill__name">Local User</span>
+                                <div className="user-pill__dot" />
+                            </div>
+                        </motion.div>
                     )}
                 </AnimatePresence>
             </div>
 
-            <div className="sidebar__new">
-                <motion.button
-                    className={`new-chat-btn ${isOpen ? 'new-chat-btn--full' : 'new-chat-btn--icon'}`}
-                    onClick={onNewChat}
-                    title="New Chat"
-                    whileTap={{ scale: 0.96 }}
-                >
-                    <Plus size={15} />
-                    <AnimatePresence>
-                        {isOpen && (
-                            <motion.span
-                                initial={{ opacity: 0, width: 0 }}
-                                animate={{ opacity: 1, width: 'auto' }}
-                                exit={{ opacity: 0, width: 0 }}
-                                transition={{ duration: 0.15 }}
-                                style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}
-                            >
-                                New Chat
-                            </motion.span>
-                        )}
-                    </AnimatePresence>
-                </motion.button>
-            </div>
-
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.nav
-                        className="sidebar__list"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                    >
-                        <AnimatePresence initial={false}>
-                            {isLoadingHistory ? (
-                                <motion.div key="loading" className="sidebar__loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                                    <Loader2 size={14} className="sidebar__loading-icon" />
-                                    <span>Loading…</span>
-                                </motion.div>
-                            ) : chats.length === 0 ? (
-                                <motion.p key="empty" className="sidebar__empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                                    No conversations yet.<br />Start typing to begin!
-                                </motion.p>
-                            ) : (
-                                chats.map((chat) => (
-                                    <motion.div
-                                        key={chat.id}
-                                        className={`chat-item ${chat.id === activeChatId ? 'chat-item--active' : ''} ${confirmDeleteId === chat.id ? 'chat-item--confirming' : ''}`}
-                                        initial={{ opacity: 0, x: -8 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: -8, height: 0 }}
-                                        transition={{ duration: 0.16 }}
-                                        onMouseEnter={() => setHoveredId(chat.id)}
-                                        onMouseLeave={() => setHoveredId(null)}
-                                    >
-                                        {confirmDeleteId === chat.id ? (
-                                            // Inline confirmation row
-                                            <>
-                                                <span className="chat-item__confirm-label">Delete this chat?</span>
-                                                <button
-                                                    className="chat-item__confirm-yes"
-                                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); onDeleteChat(chat.id); }}
-                                                >
-                                                    Delete
-                                                </button>
-                                                <button
-                                                    className="chat-item__confirm-no"
-                                                    onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
-                                                >
-                                                    Cancel
-                                                </button>
-                                            </>
-                                        ) : (
-                                            // Normal chat item row
-                                            <>
-                                                <MessageSquare size={12} className="chat-item__icon" />
-                                                <span className="chat-item__title" onClick={() => onSelectChat(chat.id)}>{chat.title}</span>
-                                                <AnimatePresence>
-                                                    {hoveredId === chat.id && (
-                                                        <motion.button
-                                                            key="del"
-                                                            className="chat-item__delete"
-                                                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(chat.id); }}
-                                                            title="Delete conversation"
-                                                            initial={{ opacity: 0, scale: 0.8 }}
-                                                            animate={{ opacity: 1, scale: 1 }}
-                                                            exit={{ opacity: 0, scale: 0.8 }}
-                                                            transition={{ duration: 0.1 }}
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </motion.button>
-                                                    )}
-                                                </AnimatePresence>
-                                            </>
-                                        )}
-                                    </motion.div>
-                                ))
-                            )}
-                        </AnimatePresence>
-                    </motion.nav>
-                )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        className="sidebar__footer"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.12 }}
-                    >
-                        <div className="user-pill">
-                            <div className="user-pill__avatar">U</div>
-                            <span className="user-pill__name">Local User</span>
-                            <div className="user-pill__dot" />
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {/* Extended unpinned hit area */}
+            {!pinned && <div className="sidebar__hit-area" />}
         </motion.aside>
     );
 }

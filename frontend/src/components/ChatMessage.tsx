@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -9,10 +9,10 @@ import type { Message } from '../types';
 
 interface ChatMessageProps {
     message: Message;
-    onEdit?: (text: string) => void;
+    onEditSubmit?: (messageId: string, newContent: string) => void;
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, showText = true }: { text: string; showText?: boolean }) {
     const [copied, setCopied] = useState(false);
     const handle = async () => {
         await navigator.clipboard.writeText(text);
@@ -22,18 +22,32 @@ function CopyButton({ text }: { text: string }) {
     return (
         <button className="copy-btn" onClick={handle} title="Copy">
             {copied ? <Check size={13} /> : <Copy size={13} />}
-            <span>{copied ? 'Copied' : 'Copy'}</span>
+            {showText && <span>{copied ? 'Copied' : 'Copy'}</span>}
         </button>
     );
 }
 
-const msgVariants: any = {
+const msgVariants: Variants = {
     hidden: { opacity: 0, y: 14, scale: 0.98 },
     visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.22, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-export function ChatMessage({ message, onEdit }: ChatMessageProps) {
+export function ChatMessage({ message, onEditSubmit }: ChatMessageProps) {
     const isUser = message.role === 'user';
+    const [isEditing, setIsEditing] = useState(false);
+    const [editContent, setEditContent] = useState(message.content);
+
+    const handleSaveEdit = () => {
+        if (editContent.trim() !== message.content && onEditSubmit) {
+            onEditSubmit(message.id, editContent);
+        }
+        setIsEditing(false);
+    };
+
+    const handleCancelEdit = () => {
+        setEditContent(message.content);
+        setIsEditing(false);
+    };
 
     return (
         <motion.div
@@ -42,20 +56,35 @@ export function ChatMessage({ message, onEdit }: ChatMessageProps) {
             initial="hidden"
             animate="visible"
         >
+            {isUser && !isEditing && (
+                <div className="msg-meta msg-meta--user-outside">
+                    {onEditSubmit && (
+                        <button className="copy-btn" onClick={() => setIsEditing(true)} title="Edit">
+                            <Pencil size={13} />
+                        </button>
+                    )}
+                    <CopyButton text={message.content} showText={false} />
+                </div>
+            )}
             <div className={`msg-bubble ${isUser ? 'msg-bubble--user' : 'msg-bubble--ai'}`}>
                 {isUser ? (
-                    <>
-                        <p className="msg-text">{message.content}</p>
-                        <div className="msg-meta msg-meta--user">
-                            {onEdit && (
-                                <button className="copy-btn" onClick={() => onEdit(message.content)} title="Edit">
-                                    <Pencil size={13} />
-                                    <span>Edit</span>
-                                </button>
-                            )}
-                            <CopyButton text={message.content} />
+                    isEditing ? (
+                        <div className="edit-message-container">
+                            <textarea
+                                className="edit-message-textarea"
+                                value={editContent}
+                                onChange={(e) => setEditContent(e.target.value)}
+                                rows={Math.max(3, editContent.split('\n').length)}
+                                autoFocus
+                            />
+                            <div className="edit-message-actions">
+                                <button className="edit-action-btn edit-action-btn--cancel" onClick={handleCancelEdit}>Cancel</button>
+                                <button className="edit-action-btn edit-action-btn--save" onClick={handleSaveEdit}>Save & Submit</button>
+                            </div>
                         </div>
-                    </>
+                    ) : (
+                        <p className="msg-text">{message.content}</p>
+                    )
                 ) : (
                     <>
                         <ReactMarkdown

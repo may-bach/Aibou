@@ -105,20 +105,24 @@ export default function App() {
           }
 
           if (payload.type === 'complete') {
-            const aiMsg = createMessage('assistant', payload.message);
+            const aiMsg = createMessage('assistant', payload.message, payload.ai_message_id);
 
             setChats((prev) =>
               prev.map((c) => {
-                // We match either the known DB conversation_id or the active chat currently being viewed
-                // (in case it was a brand new chat local to the client)
                 const isMatch = c.conversationId === payload.conversation_id || c.id === activeChatId;
                 if (!isMatch) return c;
 
+                // Update the most recent user message's true DB ID if they were synced
+                const msgs = [...c.messages];
+                if (payload.user_message_id && msgs.length > 0 && msgs[msgs.length - 1].role === 'user') {
+                  msgs[msgs.length - 1].id = String(payload.user_message_id);
+                }
+
                 return {
                   ...c,
-                  conversationId: payload.conversation_id, // ensure it has the real ID now
+                  conversationId: payload.conversation_id,
                   title: payload.title || c.title,
-                  messages: [...c.messages, aiMsg],
+                  messages: [...msgs, aiMsg],
                 };
               })
             );
@@ -240,6 +244,7 @@ export default function App() {
 
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({
+        type: 'message',
         content,
         conversation_id: currentConversationId
       }));
@@ -250,14 +255,44 @@ export default function App() {
   }, [activeChatId, chats]);
 
   const handleStop = useCallback(() => {
-    // WebSockets don't have a direct "abort request" like HTTP fetch, 
-    // but you could send a {"type": "stop"} payload to the backend if implemented.
-    console.log("Stop requested");
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: 'stop' }));
+    }
   }, []);
 
-  const handleEditMessage = useCallback((content: string) => {
-    setInputValue(content);
-  }, []);
+  const handleEditSubmit = useCallback((messageId: string, newContent: string) => {
+    let currentConversationId: number | null = null;
+
+    setChats((prev) =>
+      prev.map((c) => {
+        if (c.id !== activeChatId) return c;
+
+        currentConversationId = c.conversationId;
+        const targetIndex = c.messages.findIndex(m => m.id === messageId);
+        if (targetIndex === -1) return c;
+
+        // Slice out the target message and everything after it
+        const slicedMessages = c.messages.slice(0, targetIndex);
+        const userMsg = createMessage('user', newContent, messageId);
+
+        return {
+          ...c,
+          messages: [...slicedMessages, userMsg]
+        };
+      })
+    );
+
+    setActiveNode("Supervisor");
+
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: 'edit',
+        content: newContent,
+        conversation_id: currentConversationId,
+        message_id: parseInt(messageId.replace('msg-', ''), 10)
+      }));
+    }
+  }, [activeChatId]);
 
   const handleDeleteChat = useCallback(async (id: string) => {
     const chat = chats.find((c) => c.id === id);
@@ -292,7 +327,7 @@ export default function App() {
           messages={activeChat?.messages ?? []}
           activeNode={activeNode}
           onSuggestion={handleSend}
-          onEdit={handleEditMessage}
+          onEditSubmit={handleEditSubmit}
         />
         <ChatInput
           value={inputValue}

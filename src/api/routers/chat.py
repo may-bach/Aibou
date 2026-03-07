@@ -123,143 +123,205 @@ async def delete_conversation(conversation_id: int, db: AsyncSession = Depends(g
     return {"ok": True}
 
 
-# ── WEBSOCKET: real-time streaming chat ───────────────────────────────────────
+# Global map to store active generation tasks so we can cancel them
+active_tasks: dict[int, asyncio.Task] = {}
+
+async def process_chat_message(user_id: int, content: str, conversation_id: int | None, is_edit: bool = False, message_id_to_edit: int | None = None):
+    """Business logic for generating a response, wrapped as an async task."""
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalars().first()
+            if not user:
+                await manager.send_personal_message({"type": "error", "message": "User not found"}, user_id)
+                return
+
+            is_new_conversation = not bool(conversation_id)
+            current_chat = None
+
+            if conversation_id:
+                conv = await db.execute(
+                    select(Conversation).where(
+                        Conversation.id == conversation_id,
+                        Conversation.user_id == user.id
+                    )
+                )
+                current_chat = conv.scalars().first()
+                if not current_chat:
+                    await manager.send_personal_message({"type": "error", "message": "Conversation not found"}, user_id)
+                    return
+            else:
+                current_chat = Conversation(user_id=user.id, title="New Chat")
+                db.add(current_chat)
+                await db.flush()
+                
+            # If editing, delete the edited message and all subsequent messages
+            if is_edit and message_id_to_edit:
+                target = await db.execute(select(Message).where(Message.id == message_id_to_edit))
+                target_msg = target.scalars().first()
+                if target_msg:
+                    # Delete this message and everything after it in this conversation
+                    await db.execute(
+                        Message.__table__.delete()
+                        .where(Message.conversation_id == current_chat.id)
+                        .where(Message.created_at >= target_msg.created_at)
+                    )
+                    await db.flush()
+
+            user_msg = Message(conversation_id=current_chat.id, role="user", content=content)
+            db.add(user_msg)
+            await db.flush()
+
+            asyncio.create_task(extract_and_store_memory(content))
+
+            history_result = await db.execute(
+                select(Message)
+                .where(Message.conversation_id == current_chat.id)
+                .order_by(Message.id.asc())
+            )
+            db_history = history_result.scalars().all()
+
+            prior_messages = db_history[:-1]
+            history_lines = []
+            for msg in prior_messages:
+                speaker = "User" if msg.role == "user" else "Aibou"
+                history_lines.append(f"{speaker}: {msg.content}")
+
+            injected_context = await get_rag_context(content, n_results=5)
+
+            system_parts = []
+            if history_lines:
+                system_parts.append("CONVERSATION HISTORY (for context only):\n" + "\n\n".join(history_lines))
+            if injected_context:
+                system_parts.append("RECALLED MEMORIES:\n" + injected_context)
+
+            langchain_messages = []
+            if system_parts:
+                langchain_messages.append(SystemMessage(content="\n\n---\n\n".join(system_parts)))
+
+            langchain_messages.append(HumanMessage(content=content))
+
+            initial_state: AibouState = {
+                "messages": langchain_messages,
+                "artifacts": {}, 
+                "current_agent": "Supervisor",
+                "current_code": "",
+                "execution_output": "",
+                "retry_count": 0,
+                "requires_human_approval": False,
+                "next_route": ""
+            }
+
+            print(f"\n[WEBSOCKET] Streaming LangGraph Swarm for user {user_id}...\n")
+
+            final_state = None
+            try:
+                async for output in aibou_swarm.astream(initial_state):
+                    # Check for cancellation before processing output
+                    if asyncio.current_task().cancelled():
+                        break
+                        
+                    node_name = list(output.keys())[0]
+                    final_state = output[node_name]
+                    
+                    await manager.send_personal_message({
+                        "type": "status",
+                        "node": node_name
+                    }, user_id)
+            except asyncio.CancelledError:
+                print(f"[WEBSOCKET] Generation task cancelled for user {user_id}")
+                await manager.send_personal_message({
+                    "type": "complete",
+                    "conversation_id": current_chat.id,
+                    "message": "⚠️ *Generation stopped manually.*",
+                    "user_message_id": user_msg.id,
+                    "ai_message_id": None
+                }, user_id)
+                raise # Re-raise to cleanly abort the task
+            except Exception as e:
+                await db.rollback()
+                await manager.send_personal_message({"type": "error", "message": f"Agent pipeline failed: {str(e)}"}, user_id)
+                return
+
+            if not final_state or "messages" not in final_state:
+                await manager.send_personal_message({"type": "error", "message": "Failed to resolve swarm state"}, user_id)
+                return
+
+            final_ai_message = final_state["messages"][-1].content
+            
+            ai_msg = Message(conversation_id=current_chat.id, role="assistant", content=final_ai_message)
+            db.add(ai_msg)
+            await db.flush()
+
+            generated_title: str | None = None
+            if is_new_conversation and not is_edit:
+                generated_title = await generate_conversation_title(content)
+                current_chat.title = generated_title
+
+            await db.commit()
+
+            await manager.send_personal_message({
+                "type": "complete",
+                "conversation_id": current_chat.id,
+                "message": final_ai_message,
+                "title": generated_title,
+                "artifacts": final_state.get("artifacts", {}),
+                "agent_path": final_state.get("current_agent"),
+                "user_message_id": user_msg.id,
+                "ai_message_id": ai_msg.id
+            }, user_id)
+            
+    except asyncio.CancelledError:
+        pass # Expected on cancel
+    except Exception as e:
+        print(f"[ERROR] processing chat: {e}")
+    finally:
+        # Cleanup the active task reference
+        if user_id in active_tasks:
+            del active_tasks[user_id]
+
+
 @router.websocket("/ws/{user_id}")
 async def websocket_chat(websocket: WebSocket, user_id: int):
     await manager.connect(websocket, user_id)
     try:
         while True:
-            # Recieve a JSON payload from the frontend
             data = await websocket.receive_text()
             payload = json.loads(data)
             
+            msg_type = payload.get("type", "message")
+            
+            if msg_type == "stop":
+                if user_id in active_tasks:
+                    print(f"[WEBSOCKET] Kill signal received for user {user_id}. Cancelling task...")
+                    active_tasks[user_id].cancel()
+                continue
+                
             content = payload.get("content")
             conversation_id = payload.get("conversation_id")
             
-            if not content:
-                continue
+            if msg_type == "edit":
+                if user_id in active_tasks:
+                    active_tasks[user_id].cancel()
+                message_id_to_edit = payload.get("message_id")
+                if not message_id_to_edit or not content:
+                    continue
+                task = asyncio.create_task(process_chat_message(user_id, content, conversation_id, is_edit=True, message_id_to_edit=message_id_to_edit))
+                active_tasks[user_id] = task
                 
-            # CRITICAL: Do NOT use a global Dependency-injected DB session here, 
-            # because the WebSocket lives forever and would hold the transaction open.
-            # We instantiate a fresh scoped session just for processing this single message.
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(select(User).where(User.id == user_id))
-                user = result.scalars().first()
-                if not user:
-                    await manager.send_personal_message({"type": "error", "message": "User not found"}, user_id)
+            elif msg_type == "message":
+                if not content:
                     continue
-
-                is_new_conversation = not bool(conversation_id)
-
-                if conversation_id:
-                    conv = await db.execute(
-                        select(Conversation).where(
-                            Conversation.id == conversation_id,
-                            Conversation.user_id == user.id
-                        )
-                    )
-                    current_chat = conv.scalars().first()
-                    if not current_chat:
-                        await manager.send_personal_message({"type": "error", "message": "Conversation not found"}, user_id)
-                        continue
-                else:
-                    current_chat = Conversation(user_id=user.id, title="New Chat")
-                    db.add(current_chat)
-                    await db.flush()
-
-                user_msg = Message(conversation_id=current_chat.id, role="user", content=content)
-                db.add(user_msg)
-                await db.flush()
-
-                # Trigger RAG explicitly via asyncio.create_task (BackgroundTasks won't work in WS)
-                asyncio.create_task(extract_and_store_memory(content))
-
-                # Load conversation history
-                history_result = await db.execute(
-                    select(Message)
-                    .where(Message.conversation_id == current_chat.id)
-                    .order_by(Message.id.asc())
-                )
-                db_history = history_result.scalars().all()
-
-                prior_messages = db_history[:-1] # omit the message we just added
-                history_lines = []
-                for msg in prior_messages:
-                    speaker = "User" if msg.role == "user" else "Aibou"
-                    history_lines.append(f"{speaker}: {msg.content}")
-
-                # Inject RAG context
-                injected_context = await get_rag_context(content, n_results=5)
-
-                system_parts = []
-                if history_lines:
-                    system_parts.append("CONVERSATION HISTORY (for context only):\n" + "\n\n".join(history_lines))
-                if injected_context:
-                    system_parts.append("RECALLED MEMORIES:\n" + injected_context)
-
-                langchain_messages = []
-                if system_parts:
-                    langchain_messages.append(SystemMessage(content="\n\n---\n\n".join(system_parts)))
-
-                langchain_messages.append(HumanMessage(content=content))
-
-                initial_state: AibouState = {
-                    "messages": langchain_messages,
-                    "artifacts": {}, 
-                    "current_agent": "Supervisor",
-                    "current_code": "",
-                    "execution_output": "",
-                    "retry_count": 0,
-                    "requires_human_approval": False,
-                    "next_route": ""
-                }
-
-                print(f"\n[WEBSOCKET] Streaming LangGraph Swarm for user {user_id}...\n")
-
-                try:
-                    final_state = None
-                    async for output in aibou_swarm.astream(initial_state):
-                        # Determine which node just finished executing
-                        node_name = list(output.keys())[0]
-                        final_state = output[node_name]
-                        
-                        # Stream the current active node back to the client for the thinking indicator
-                        await manager.send_personal_message({
-                            "type": "status",
-                            "node": node_name
-                        }, user_id)
-                        
-                except Exception as e:
-                    await db.rollback()
-                    await manager.send_personal_message({"type": "error", "message": f"Agent pipeline failed: {str(e)}"}, user_id)
-                    continue
-
-                if not final_state or "messages" not in final_state:
-                    await manager.send_personal_message({"type": "error", "message": "Failed to resolve swarm state"}, user_id)
-                    continue
-
-                final_ai_message = final_state["messages"][-1].content
-                
-                ai_msg = Message(conversation_id=current_chat.id, role="assistant", content=final_ai_message)
-                db.add(ai_msg)
-
-                generated_title: str | None = None
-                if is_new_conversation:
-                    generated_title = await generate_conversation_title(content)
-                    current_chat.title = generated_title
-
-                await db.commit()
-
-                # Send final complete payload back to the client
-                await manager.send_personal_message({
-                    "type": "complete",
-                    "conversation_id": current_chat.id,
-                    "message": final_ai_message,
-                    "title": generated_title,
-                    "artifacts": final_state.get("artifacts", {}),
-                    "agent_path": final_state.get("current_agent")
-                }, user_id)
+                # If there's an existing task, let it run or cancel it?
+                # Standard practice: cancel existing generation on new prompt
+                if user_id in active_tasks:
+                    active_tasks[user_id].cancel()
+                    
+                task = asyncio.create_task(process_chat_message(user_id, content, conversation_id))
+                active_tasks[user_id] = task
 
     except WebSocketDisconnect:
         manager.disconnect(user_id)
+        if user_id in active_tasks:
+            active_tasks[user_id].cancel()
         print(f"[WEBSOCKET] User {user_id} disconnected.")

@@ -8,7 +8,8 @@ supervisor_llm = ChatOpenAI(
     model=settings.MODEL_ARCHITECT,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
     api_key=settings.LOCAL_LLM_API_KEY,
-    temperature=0.0
+    temperature=0.0,
+    timeout=120
 )
 
 SUPERVISOR_PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "node_prompts" / "supervisor.md"

@@ -5,16 +5,16 @@ interface ThinkingIndicatorProps {
 }
 
 export function ThinkingIndicator({ activeNode }: ThinkingIndicatorProps) {
-    let displayText = "Aibou is thinking";
+    let displayText = "Thinking";
     switch (activeNode) {
         case "Supervisor":
-            displayText = "Aibou is analyzing the request";
+            displayText = "Analyzing the request";
             break;
         case "Planner":
-            displayText = "Architect is building a plan";
+            displayText = "Building a plan";
             break;
         case "Coder":
-            displayText = "Coder is drafting files";
+            displayText = "Drafting files";
             break;
         case "Executor":
             displayText = "Testing code in sandbox";

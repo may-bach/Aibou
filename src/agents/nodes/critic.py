@@ -8,7 +8,8 @@ critic_llm = ChatOpenAI(
     model=settings.MODEL_ARCHITECT,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
     api_key=settings.LOCAL_LLM_API_KEY,
-    temperature=0.1
+    temperature=0.1,
+    timeout=120
 )
 
 CRITIC_PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "node_prompts" / "critic.md"

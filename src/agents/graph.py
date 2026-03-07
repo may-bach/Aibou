@@ -28,7 +28,7 @@ def critic_router(state: AibouState):
     last_message = messages[-1].content.upper()
     retry_count = state.get("retry_count", 0)
     
-    if "PASS" in last_message:
+    if "STATUS: PASS" in last_message:
         print("\n[CRITIC] Code passed! Ending execution.\n")
         return END
     
