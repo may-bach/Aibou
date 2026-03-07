@@ -4,8 +4,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Pencil } from 'lucide-react';
 import type { Message } from '../types';
+
+interface ChatMessageProps {
+    message: Message;
+    onEdit?: (text: string) => void;
+}
 
 function CopyButton({ text }: { text: string }) {
     const [copied, setCopied] = useState(false);
@@ -22,12 +27,12 @@ function CopyButton({ text }: { text: string }) {
     );
 }
 
-const msgVariants = {
+const msgVariants: any = {
     hidden: { opacity: 0, y: 14, scale: 0.98 },
     visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.22, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-export function ChatMessage({ message }: { message: Message }) {
+export function ChatMessage({ message, onEdit }: ChatMessageProps) {
     const isUser = message.role === 'user';
 
     return (
@@ -39,7 +44,18 @@ export function ChatMessage({ message }: { message: Message }) {
         >
             <div className={`msg-bubble ${isUser ? 'msg-bubble--user' : 'msg-bubble--ai'}`}>
                 {isUser ? (
-                    <p className="msg-text">{message.content}</p>
+                    <>
+                        <p className="msg-text">{message.content}</p>
+                        <div className="msg-meta msg-meta--user">
+                            {onEdit && (
+                                <button className="copy-btn" onClick={() => onEdit(message.content)} title="Edit">
+                                    <Pencil size={13} />
+                                    <span>Edit</span>
+                                </button>
+                            )}
+                            <CopyButton text={message.content} />
+                        </div>
+                    </>
                 ) : (
                     <>
                         <ReactMarkdown

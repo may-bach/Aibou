@@ -43,10 +43,11 @@ export default function App() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeNode, setActiveNode] = useState<string | null>(null);
+  const [inputValue, setInputValue] = useState('');
   const [headerVisible, setHeaderVisible] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<number>();
+  const reconnectTimeoutRef = useRef<number | undefined>(undefined);
 
   const activeChat = chats.find((c) => c.id === activeChatId) ?? null;
   const hasMessages = (activeChat?.messages.length ?? 0) > 0;
@@ -254,6 +255,10 @@ export default function App() {
     console.log("Stop requested");
   }, []);
 
+  const handleEditMessage = useCallback((content: string) => {
+    setInputValue(content);
+  }, []);
+
   const handleDeleteChat = useCallback(async (id: string) => {
     const chat = chats.find((c) => c.id === id);
     // If this chat has a real DB conversation, delete it from the backend
@@ -287,8 +292,11 @@ export default function App() {
           messages={activeChat?.messages ?? []}
           activeNode={activeNode}
           onSuggestion={handleSend}
+          onEdit={handleEditMessage}
         />
         <ChatInput
+          value={inputValue}
+          onChange={setInputValue}
           onSend={handleSend}
           onStop={handleStop}
           isThinking={activeNode !== null}

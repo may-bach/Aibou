@@ -9,6 +9,7 @@ interface ChatAreaProps {
     messages: Message[];
     activeNode: string | null;
     onSuggestion: (text: string) => void;
+    onEdit: (text: string) => void;
 }
 
 const SUGGESTIONS = [
@@ -18,7 +19,7 @@ const SUGGESTIONS = [
     'Debug this: list index out of range',
 ];
 
-export function ChatArea({ messages, activeNode, onSuggestion }: ChatAreaProps) {
+export function ChatArea({ messages, activeNode, onSuggestion, onEdit }: ChatAreaProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -92,7 +93,7 @@ export function ChatArea({ messages, activeNode, onSuggestion }: ChatAreaProps) 
                 >
                     <div className="chat-feed">
                         {messages.map((msg) => (
-                            <ChatMessage key={msg.id} message={msg} />
+                            <ChatMessage key={msg.id} message={msg} onEdit={onEdit} />
                         ))}
                         {activeNode && <ThinkingIndicator activeNode={activeNode} />}
                         <div ref={bottomRef} />

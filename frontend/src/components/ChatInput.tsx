@@ -1,15 +1,16 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowUp, Square } from 'lucide-react';
 
 interface ChatInputProps {
+    value: string;
+    onChange: (val: string) => void;
     onSend: (content: string) => void;
     onStop: () => void;
     isThinking: boolean;
 }
 
-export function ChatInput({ onSend, onStop, isThinking }: ChatInputProps) {
-    const [value, setValue] = useState('');
+export function ChatInput({ value, onChange, onSend, onStop, isThinking }: ChatInputProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Auto-resize textarea to fit content — single source of truth
@@ -28,10 +29,10 @@ export function ChatInput({ onSend, onStop, isThinking }: ChatInputProps) {
         const trimmed = value.trim();
         if (!trimmed || isThinking) return;
         onSend(trimmed);
-        setValue('');
+        onChange('');
         // Reset height after clearing
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    }, [value, isThinking, onSend]);
+    }, [value, isThinking, onSend, onChange]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -45,7 +46,7 @@ export function ChatInput({ onSend, onStop, isThinking }: ChatInputProps) {
                 <textarea
                     ref={textareaRef}
                     value={value}
-                    onChange={(e) => setValue(e.target.value)}
+                    onChange={(e) => onChange(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Message Aibou..."
                     rows={1}

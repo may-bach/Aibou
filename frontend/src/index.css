@@ -518,6 +518,9 @@ body {
   background: transparent;
   /* slightly wider for AI since it's usually longer */
   max-width: 90%;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .msg-text {
@@ -543,6 +546,11 @@ body {
 
 .msg-row:hover .msg-meta {
   opacity: 1;
+}
+
+.msg-meta--user {
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .msg-time {
