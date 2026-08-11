@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, MessageSquare, Trash2 } from 'lucide-react';
@@ -15,19 +15,24 @@ interface SidebarProps {
     isLoadingHistory?: boolean;
 }
 
-export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewChat, onDeleteChat, onTopHover, isLoadingHistory }: SidebarProps) {
+export function Sidebar({ chats, activeChatId, onSelectChat, onNewChat, onDeleteChat, onTopHover, isLoadingHistory }: SidebarProps) {
     const [hoveredId, setHoveredId] = useState<string | null>(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-    const [pinned, setPinned] = useState(true);
+    
+    // Read user's pinned preference from localStorage (persists across chats and reloads)
+    const [pinned, setPinned] = useState<boolean>(() => {
+        const saved = localStorage.getItem('aibou_sidebar_pinned');
+        return saved !== null ? saved === 'true' : true;
+    });
     const [hovered, setHovered] = useState(false);
-    const prevHasMessages = useRef(false);
 
-    useEffect(() => {
-        if (hasMessages && !prevHasMessages.current) {
-            setPinned(false);
-        }
-        prevHasMessages.current = hasMessages;
-    }, [hasMessages]);
+    const togglePin = () => {
+        setPinned(prev => {
+            const next = !prev;
+            localStorage.setItem('aibou_sidebar_pinned', String(next));
+            return next;
+        });
+    };
 
     const isOpen = pinned || hovered;
 
@@ -50,7 +55,6 @@ export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewC
             onMouseLeave={handleMouseLeave}
         >
             <div className="sidebar__header">
-                {/* Logo — always visible; animates margin left/right with sidebar */}
                 <motion.div
                     className="sidebar__logo-icon"
                     animate={{ marginLeft: isOpen ? 17 : 15 }}
@@ -59,13 +63,13 @@ export function Sidebar({ chats, activeChatId, hasMessages, onSelectChat, onNewC
                     <img src="/Aibou_2-removebg-preview.png" alt="Aibou Logo" className="sidebar__logo-image" />
                 </motion.div>
 
-                {/* Pin button — only visible when expanded */}
                 <AnimatePresence>
+
                     {isOpen && (
                         <motion.button
                             className="icon-btn"
-                            onClick={() => setPinned(p => !p)}
-                            title={pinned ? 'Collapse sidebar' : 'Pin sidebar open'}
+                            onClick={togglePin}
+                            title={pinned ? 'Collapse sidebar (unpin)' : 'Lock sidebar open (pin)'}
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}

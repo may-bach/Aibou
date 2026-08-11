@@ -8,6 +8,7 @@ planner_llm = ChatOpenAI(
     model=settings.MODEL_ARCHITECT,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
     api_key=settings.LOCAL_LLM_API_KEY,
+    streaming=True,
     temperature=0.3
 )
 
@@ -16,7 +17,7 @@ with open(PLANNER_PROMPT_PATH, "r", encoding="utf-8") as file:
     PLANNER_PROMPT = file.read()
 
 async def planner_node(state: AibouState) -> dict:
-    print("[NODE] Planner is drafting the architecture checklist...")
+    print("[NODE: PLANNER] Drafting architectural checklist...")
     
     messages = state.get("messages", [])
     
@@ -26,7 +27,7 @@ async def planner_node(state: AibouState) -> dict:
     response = await planner_llm.ainvoke(prompt_sequence)
     
     return {
-        "messages": [AIMessage(content=f"Project Plan:\n{response.content}")],
+        "messages": [AIMessage(content=f"### Architecture Plan\n\n{response.content}")],
         "current_agent": "Planner",
-        "retry_count": 0   # Reset so previous coding attempts don't bleed over
+        "retry_count": 0
     }

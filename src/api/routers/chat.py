@@ -1,22 +1,44 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from langchain_openai import ChatOpenAI
 import asyncio
 import json
+import re
+from pathlib import Path
 
 from src.db.session import get_db, AsyncSessionLocal
 from src.models.user import User
 from src.models.memory import Conversation, Message
 from src.schemas.chat import ChatRequest
-from src.services.memory import extract_and_store_memory, get_rag_context, generate_conversation_title
+from src.services.memory import extract_and_store_memory, get_rag_context, generate_conversation_title, store_document_in_rag
+from src.services.document_parser import extract_text_from_file
+from src.agents.tools import aibou_tools, tool_map
+from src.core.config import settings
 
-from src.agents.graph import aibou_swarm
-from src.agents.state import AibouState
+# Core personality prompt
+PROMPT_PATH = Path(__file__).resolve().parent.parent.parent / "prompts" / "core_aibou.md"
+if PROMPT_PATH.exists():
+    with open(PROMPT_PATH, "r", encoding="utf-8") as file:
+        CORE_PROMPT = re.sub(r'<!--[\s\S]*?-->', '', file.read()).strip()
+
+else:
+    CORE_PROMPT = "You are Aibou (相棒), a sharp, casual, and intelligent AI companion."
+
+TOOL_DIRECTIVE = """
+--- LIVE TOOLS & REAL-TIME SEARCH ---
+You have access to live tools:
+1. `web_search`: Search the web for current events, latest sports winners/results, recent news, real-time facts, or external documentation. ALWAYS use this tool when asked about recent real-world events or sports facts beyond your static cutoff.
+2. `calculate`: Use for exact arithmetic or mathematical equations.
+3. `get_current_time`: Check the current date, time, or day of the week.
+4. `read_local_file`: Inspect project files.
+
+When tools return data, synthesize the results cleanly and naturally into your answer without repeating paragraphs or dumping raw JSON.
+"""
 
 class ConnectionManager:
     def __init__(self):
-        # Maps user_id to an active WebSocket connection
         self.active_connections: dict[int, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, user_id: int):
@@ -29,22 +51,42 @@ class ConnectionManager:
 
     async def send_personal_message(self, message: dict, user_id: int):
         if user_id in self.active_connections:
-            await self.active_connections[user_id].send_json(message)
+            try:
+                await self.active_connections[user_id].send_json(message)
+            except Exception as e:
+                print(f"[WS ERROR] Failed to send to user {user_id}: {e}")
 
 manager = ConnectionManager()
-
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
-# ── GET: list all conversations for a user ────────────────────────────────────
+@router.post("/upload")
+async def upload_document(file: UploadFile = File(...)):
+    try:
+        content_bytes = await file.read()
+        parsed = extract_text_from_file(content_bytes, file.filename or "uploaded_file")
+        if not parsed.get("success"):
+            raise HTTPException(status_code=400, detail=parsed.get("error", "Failed to parse document"))
+        
+        # Store chunks in chroma so memory stays across chats
+        if parsed.get("text"):
+            store_document_in_rag(file.filename or "uploaded_file", parsed["text"])
+
+        return parsed
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload processing failed: {str(e)}")
+
+
 @router.get("/conversations/{user_id}")
 async def list_conversations(user_id: int, db: AsyncSession = Depends(get_db)):
-    """Return all conversations for a user, newest first."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
 
     convs_result = await db.execute(
         select(Conversation)
@@ -118,30 +160,28 @@ async def delete_conversation(conversation_id: int, db: AsyncSession = Depends(g
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    await db.delete(conv)          # cascade="all, delete-orphan" removes messages too
+    await db.delete(conv)
     await db.commit()
     return {"ok": True}
 
 
-# ── WEBSOCKET: real-time streaming chat ───────────────────────────────────────
+# ── WEBSOCKET: High-performance direct streaming with RAG & Tools ────────────
 @router.websocket("/ws/{user_id}")
 async def websocket_chat(websocket: WebSocket, user_id: int):
     await manager.connect(websocket, user_id)
     try:
         while True:
-            # Recieve a JSON payload from the frontend
             data = await websocket.receive_text()
             payload = json.loads(data)
             
             content = payload.get("content")
             conversation_id = payload.get("conversation_id")
+            local_chat_id = payload.get("local_chat_id")
+            attachments = payload.get("attachments", [])
             
-            if not content:
+            if not content and not attachments:
                 continue
-                
-            # CRITICAL: Do NOT use a global Dependency-injected DB session here, 
-            # because the WebSocket lives forever and would hold the transaction open.
-            # We instantiate a fresh scoped session just for processing this single message.
+
             async with AsyncSessionLocal() as db:
                 result = await db.execute(select(User).where(User.id == user_id))
                 user = result.scalars().first()
@@ -167,14 +207,24 @@ async def websocket_chat(websocket: WebSocket, user_id: int):
                     db.add(current_chat)
                     await db.flush()
 
-                user_msg = Message(conversation_id=current_chat.id, role="user", content=content)
+                # User display message
+                display_content = content or ""
+                if attachments:
+                    att_names = ", ".join([a.get("filename", "file") for a in attachments])
+                    if not display_content:
+                        display_content = f"Uploaded document: {att_names}"
+                    for att in attachments:
+                        if att.get("text"):
+                            store_document_in_rag(att.get("filename", "document"), att["text"])
+
+                user_msg = Message(conversation_id=current_chat.id, role="user", content=display_content)
                 db.add(user_msg)
                 await db.flush()
 
-                # Trigger RAG explicitly via asyncio.create_task (BackgroundTasks won't work in WS)
-                asyncio.create_task(extract_and_store_memory(content))
+                # Background long-term memory extraction
+                asyncio.create_task(extract_and_store_memory(display_content))
 
-                # Load conversation history
+                # Load conversation history for context
                 history_result = await db.execute(
                     select(Message)
                     .where(Message.conversation_id == current_chat.id)
@@ -182,82 +232,201 @@ async def websocket_chat(websocket: WebSocket, user_id: int):
                 )
                 db_history = history_result.scalars().all()
 
-                prior_messages = db_history[:-1] # omit the message we just added
+                prior_messages = db_history[:-1] # omit current
                 history_lines = []
                 for msg in prior_messages:
                     speaker = "User" if msg.role == "user" else "Aibou"
                     history_lines.append(f"{speaker}: {msg.content}")
 
-                # Inject RAG context
-                injected_context = await get_rag_context(content, n_results=5)
+                # Retrieve RAG context
+                injected_context = await get_rag_context(display_content, n_results=5)
 
-                system_parts = []
+                system_parts = [CORE_PROMPT, TOOL_DIRECTIVE]
                 if history_lines:
-                    system_parts.append("CONVERSATION HISTORY (for context only):\n" + "\n\n".join(history_lines))
+                    system_parts.append("CONVERSATION HISTORY:\n" + "\n\n".join(history_lines))
                 if injected_context:
-                    system_parts.append("RECALLED MEMORIES:\n" + injected_context)
+                    system_parts.append("RECALLED MEMORIES & RELEVANT DOCUMENTS:\n" + injected_context)
 
-                langchain_messages = []
-                if system_parts:
-                    langchain_messages.append(SystemMessage(content="\n\n---\n\n".join(system_parts)))
+                # Format attached documents directly into prompt context
+                attached_doc_block = ""
+                if attachments:
+                    doc_texts = []
+                    for att in attachments:
+                        fname = att.get("filename", "Uploaded File")
+                        ftext = att.get("text", "")
+                        if ftext:
+                            doc_texts.append(f"📄 [ATTACHED DOCUMENT: {fname}]\n\"\"\"\n{ftext}\n\"\"\"")
+                    if doc_texts:
+                        attached_doc_block = "\n\n".join(doc_texts)
 
-                langchain_messages.append(HumanMessage(content=content))
+                user_instruction = content.strip() if content and content.strip() else "Please read, review, and analyze the attached document."
+                if attached_doc_block:
+                    full_human_prompt = f"{attached_doc_block}\n\nUser Request: {user_instruction}"
+                else:
+                    full_human_prompt = user_instruction
 
-                initial_state: AibouState = {
-                    "messages": langchain_messages,
-                    "artifacts": {}, 
-                    "current_agent": "Supervisor",
-                    "current_code": "",
-                    "execution_output": "",
-                    "retry_count": 0,
-                    "requires_human_approval": False,
-                    "next_route": ""
-                }
+                prompt_messages = [
+                    SystemMessage(content="\n\n---\n\n".join(system_parts)),
+                    HumanMessage(content=full_human_prompt)
+                ]
 
-                print(f"\n[WEBSOCKET] Streaming LangGraph Swarm for user {user_id}...\n")
+                # Keep model in vram for 15m so chat stays warm
+                base_llm = ChatOpenAI(
+                    model=settings.MODEL_CHAT,
+                    base_url=f"{settings.LOCAL_LLM_URL}/v1",
+                    api_key=settings.LOCAL_LLM_API_KEY,
+                    streaming=True,
+                    temperature=0.75,
+                    extra_body={"keep_alive": "15m"}
+                )
 
                 try:
-                    final_state = None
-                    async for output in aibou_swarm.astream(initial_state):
-                        # Determine which node just finished executing
-                        node_name = list(output.keys())[0]
-                        final_state = output[node_name]
+                    llm = base_llm.bind_tools(aibou_tools)
+                except Exception:
+                    llm = base_llm
+
+                accumulated_tokens = []
+                
+                await manager.send_personal_message({
+                    "type": "status",
+                    "node": "Aibou",
+                    "conversation_id": current_chat.id,
+                    "local_chat_id": local_chat_id
+                }, user_id)
+
+                try:
+                    full_chunk = None
+                    tool_calls_detected = False
+
+                    try:
+                        stream_target = llm.astream(prompt_messages)
+                        async for chunk in stream_target:
+                            if full_chunk is None:
+                                full_chunk = chunk
+                            else:
+                                full_chunk += chunk
+
+                            if hasattr(chunk, "tool_call_chunks") and chunk.tool_call_chunks:
+                                tool_calls_detected = True
+
+                            delta = chunk.content if isinstance(chunk.content, str) else ""
+                            if delta and not tool_calls_detected:
+                                accumulated_tokens.append(delta)
+                                await manager.send_personal_message({
+                                    "type": "token",
+                                    "delta": delta,
+                                    "node": "Aibou",
+                                    "conversation_id": current_chat.id,
+                                    "local_chat_id": local_chat_id
+                                }, user_id)
+                    except Exception as stream_err:
+                        # Fallback if model doesn't support tool schema
+                        if "does not support tools" in str(stream_err) or "tools" in str(stream_err).lower():
+                            async for chunk in base_llm.astream(prompt_messages):
+                                delta = chunk.content if isinstance(chunk.content, str) else ""
+                                if delta:
+                                    accumulated_tokens.append(delta)
+                                    await manager.send_personal_message({
+                                        "type": "token",
+                                        "delta": delta,
+                                        "node": "Aibou",
+                                        "conversation_id": current_chat.id,
+                                        "local_chat_id": local_chat_id
+                                    }, user_id)
+                        else:
+                            raise stream_err
+
+                    # If model requested tool calls, run them locally and stream the answer
+                    if full_chunk and hasattr(full_chunk, "tool_calls") and full_chunk.tool_calls:
+                        prompt_messages.append(full_chunk)
                         
-                        # Stream the current active node back to the client for the thinking indicator
-                        await manager.send_personal_message({
-                            "type": "status",
-                            "node": node_name
-                        }, user_id)
-                        
+                        for tool_call in full_chunk.tool_calls:
+                            t_name = tool_call.get("name")
+                            t_args = tool_call.get("args", {})
+                            t_id = tool_call.get("id", "call_1")
+
+                            
+                            await manager.send_personal_message({
+                                "type": "tool_status",
+                                "tool": t_name,
+                                "status": "running",
+                                "conversation_id": current_chat.id,
+                                "local_chat_id": local_chat_id
+                            }, user_id)
+                            
+                            tool_fn = tool_map.get(t_name)
+                            if tool_fn:
+                                try:
+                                    if asyncio.iscoroutinefunction(tool_fn.func):
+                                        tool_result = await tool_fn.func(**t_args)
+                                    else:
+                                        tool_result = tool_fn.func(**t_args)
+                                except Exception as err:
+                                    tool_result = f"Error executing tool: {err}"
+                            else:
+                                tool_result = f"Tool {t_name} not found."
+
+                            prompt_messages.append(ToolMessage(content=str(tool_result), tool_call_id=t_id))
+                            
+                            await manager.send_personal_message({
+                                "type": "tool_status",
+                                "tool": t_name,
+                                "status": "done",
+                                "conversation_id": current_chat.id,
+                                "local_chat_id": local_chat_id
+                            }, user_id)
+
+                        # Stream synthesized response after tool execution
+                        async for chunk in llm.astream(prompt_messages):
+                            delta = chunk.content if isinstance(chunk.content, str) else ""
+                            if delta:
+                                accumulated_tokens.append(delta)
+                                await manager.send_personal_message({
+                                    "type": "token",
+                                    "delta": delta,
+                                    "node": "Aibou",
+                                    "conversation_id": current_chat.id,
+                                    "local_chat_id": local_chat_id
+                                }, user_id)
+
+
                 except Exception as e:
                     await db.rollback()
-                    await manager.send_personal_message({"type": "error", "message": f"Agent pipeline failed: {str(e)}"}, user_id)
+                    print(f"[WS CHAT ERROR] Generation failed: {e}")
+                    await manager.send_personal_message({
+                        "type": "error",
+                        "message": f"Generation error: {str(e)}",
+                        "conversation_id": current_chat.id,
+                        "local_chat_id": local_chat_id
+                    }, user_id)
                     continue
 
-                if not final_state or "messages" not in final_state:
-                    await manager.send_personal_message({"type": "error", "message": "Failed to resolve swarm state"}, user_id)
-                    continue
+                full_message = "".join(accumulated_tokens).strip()
+                if "<think>" in full_message:
+                    full_message = re.sub(r'<think>.*?</think>', '', full_message, flags=re.DOTALL).strip()
 
-                final_ai_message = final_state["messages"][-1].content
-                
-                ai_msg = Message(conversation_id=current_chat.id, role="assistant", content=final_ai_message)
+                if not full_message:
+                    full_message = "I'm here. What's on your mind?"
+
+                # Save AI response to DB
+                ai_msg = Message(conversation_id=current_chat.id, role="assistant", content=full_message)
                 db.add(ai_msg)
 
                 generated_title: str | None = None
                 if is_new_conversation:
-                    generated_title = await generate_conversation_title(content)
+                    generated_title = await generate_conversation_title(display_content)
                     current_chat.title = generated_title
 
                 await db.commit()
 
-                # Send final complete payload back to the client
+                # Send completion confirmation
                 await manager.send_personal_message({
                     "type": "complete",
                     "conversation_id": current_chat.id,
-                    "message": final_ai_message,
+                    "local_chat_id": local_chat_id,
+                    "message": full_message,
                     "title": generated_title,
-                    "artifacts": final_state.get("artifacts", {}),
-                    "agent_path": final_state.get("current_agent")
+                    "agent_path": "Aibou"
                 }, user_id)
 
     except WebSocketDisconnect:

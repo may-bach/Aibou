@@ -1,4 +1,4 @@
-from typing import Annotated, TypedDict, Sequence, Dict, Any
+from typing import Annotated, TypedDict, Sequence, Dict, Any, Optional
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from src.core.config import settings
@@ -65,7 +65,7 @@ def update_artifacts(existing: Dict[str, Any], new: Dict[str, Any]) -> Dict[str,
     return updated
 
 
-class AibouState(TypedDict):
+class AibouState(TypedDict, total=False):
     messages: Annotated[Sequence[BaseMessage], compress_memory_window]
     
     artifacts: Annotated[Dict[str, Any], update_artifacts]
@@ -81,3 +81,7 @@ class AibouState(TypedDict):
     requires_human_approval: bool
     
     next_route: str
+
+    specialist_domain: str
+
+    active_tool: str

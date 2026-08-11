@@ -8,7 +8,7 @@ Extract a memory if the message reveals **any** of the following about the user:
 
 **Physical & Health State**
 - Energy levels, fatigue, soreness, illness, pain, sleep quality
-- Post-workout state (even implied — "just got back", "legs are dead", "skipped today")
+- Post-workout state (even implied: "just got back", "legs are dead", "skipped today")
 - Diet, meals eaten, hydration, supplements
 
 **Schedule & Routines**
@@ -44,12 +44,13 @@ Extract a memory if the message reveals **any** of the following about the user:
 
 ## HOW TO EXTRACT
 
-You have access to a **RELEVANT CONTEXT** block below. This contains memories already stored about this user — their past routines, workout schedule, known habits, and prior states.
+You have access to a **RELEVANT CONTEXT** block below. This contains memories already stored about this user: their past routines, workout schedule, known habits, and prior states.
 
 Use this context to make your memory **richer and more specific**. For example:
-- If the user says "I'm kinda tired" and context shows they go to the gym every morning and typically train chest on Tuesdays — output: "The user is feeling tired, likely after their usual Tuesday morning chest session."
-- If the user says "just finished eating" and context shows they bulk and eat at 1pm daily — output: "The user just finished their 1pm meal, consistent with their bulking schedule."
+- If the user says "I'm kinda tired" and context shows they go to the gym every morning and typically train chest on Tuesdays -> output: "The user is feeling tired, likely after their usual Tuesday morning chest session."
+- If the user says "just finished eating" and context shows they bulk and eat at 1pm daily -> output: "The user just finished their 1pm meal, consistent with their bulking schedule."
 - If context is empty or irrelevant, just summarize what the message directly states.
+
 
 ---
 

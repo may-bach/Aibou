@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 sqlalchemy[asyncio]
-#aiomysql  (for quick testing if needed)
 alembic
 pydantic-settings
 python-dotenv
@@ -12,5 +11,10 @@ langchain-openai
 greenlet
 chromadb 
 pypdf
+python-docx
+python-multipart
 openai
 asyncpg
+aiosqlite
+edge-tts
+ddgs
