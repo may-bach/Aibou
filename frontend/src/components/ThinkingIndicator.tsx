@@ -5,26 +5,33 @@ interface ThinkingIndicatorProps {
 }
 
 export function ThinkingIndicator({ activeNode }: ThinkingIndicatorProps) {
-    let displayText = "Aibou is thinking";
-    switch (activeNode) {
-        case "Supervisor":
-            displayText = "Aibou is analyzing the request";
-            break;
-        case "Planner":
-            displayText = "Architect is building a plan";
-            break;
-        case "Coder":
-            displayText = "Coder is drafting files";
-            break;
-        case "Executor":
-            displayText = "Testing code in sandbox";
-            break;
-        case "Critic":
-            displayText = "Reviewing execution logs";
-            break;
-        case "Specialist":
-            displayText = "Consulting domain expert";
-            break;
+    let displayText = "Thinking";
+    const lower = activeNode.toLowerCase();
+
+    if (lower.includes("supervisor")) {
+        displayText = "Analyzing request";
+    } else if (lower.includes("planner")) {
+        displayText = "Designing plan";
+    } else if (lower.includes("coder")) {
+        displayText = "Writing code";
+    } else if (lower.includes("executor")) {
+        displayText = "Testing in sandbox";
+    } else if (lower.includes("critic")) {
+        displayText = "Reviewing output";
+    } else if (lower.includes("web_search") || lower.includes("search")) {
+        displayText = "Searching the web";
+    } else if (lower.includes("calculate") || lower.includes("math")) {
+        displayText = "Computing calculation";
+    } else if (lower.includes("time") || lower.includes("date")) {
+        displayText = "Checking temporal context";
+    } else if (lower.includes("file")) {
+        displayText = "Inspecting workspace";
+    } else if (lower.includes("specialist")) {
+        if (lower.includes("finance")) displayText = "Consulting financial model";
+        else if (lower.includes("science")) displayText = "Consulting science model";
+        else if (lower.includes("creative")) displayText = "Generating creative response";
+        else if (lower.includes("reasoning")) displayText = "Reasoning deeply";
+        else displayText = "Formulating response";
     }
 
     return (

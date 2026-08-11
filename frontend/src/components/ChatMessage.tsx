@@ -4,12 +4,16 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Copy, Check, Pencil } from 'lucide-react';
+import { Copy, Check, Pencil, Volume2, Square, FileText } from 'lucide-react';
+
 import type { Message } from '../types';
+
 
 interface ChatMessageProps {
     message: Message;
     onEdit?: (text: string) => void;
+    onSpeak?: (text: string, messageId: string) => void;
+    isSpeaking?: boolean;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -20,10 +24,21 @@ function CopyButton({ text }: { text: string }) {
         setTimeout(() => setCopied(false), 2000);
     };
     return (
-        <button className="copy-btn" onClick={handle} title="Copy">
+        <button className="copy-btn" onClick={handle} title="Copy text">
             {copied ? <Check size={13} /> : <Copy size={13} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
         </button>
+    );
+}
+
+function AudioWaveform() {
+    return (
+        <div className="audio-wave-container" title="Aibou speaking">
+            <span className="wave-bar wave-bar-1" />
+            <span className="wave-bar wave-bar-2" />
+            <span className="wave-bar wave-bar-3" />
+            <span className="wave-bar wave-bar-4" />
+        </div>
     );
 }
 
@@ -32,7 +47,7 @@ const msgVariants: any = {
     visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.22, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-export function ChatMessage({ message, onEdit }: ChatMessageProps) {
+export function ChatMessage({ message, onEdit, onSpeak, isSpeaking = false }: ChatMessageProps) {
     const isUser = message.role === 'user';
 
     return (
@@ -42,21 +57,27 @@ export function ChatMessage({ message, onEdit }: ChatMessageProps) {
             initial="hidden"
             animate="visible"
         >
-            <div className={`msg-bubble ${isUser ? 'msg-bubble--user' : 'msg-bubble--ai'}`}>
+            <div className={`msg-bubble ${isUser ? 'msg-bubble--user' : 'msg-bubble--ai'} ${isSpeaking ? 'msg-bubble--speaking' : ''}`}>
+                {message.attachments && message.attachments.length > 0 && (
+                    <div className="msg-attachments-grid">
+                        {message.attachments.map((att, idx) => (
+                            att.file_type === 'image' && att.image_url ? (
+                                <div key={idx} className="msg-attachment-img-wrap">
+                                    <img src={att.image_url} alt={att.filename} className="msg-attachment-img" />
+                                </div>
+                            ) : (
+                                <div key={idx} className="msg-attachment-file">
+                                    <FileText size={13} />
+                                    <span>{att.filename}</span>
+                                </div>
+                            )
+                        ))}
+                    </div>
+                )}
                 {isUser ? (
-                    <>
-                        <p className="msg-text">{message.content}</p>
-                        <div className="msg-meta msg-meta--user">
-                            {onEdit && (
-                                <button className="copy-btn" onClick={() => onEdit(message.content)} title="Edit">
-                                    <Pencil size={13} />
-                                    <span>Edit</span>
-                                </button>
-                            )}
-                            <CopyButton text={message.content} />
-                        </div>
-                    </>
+                    <p className="msg-text">{message.content}</p>
                 ) : (
+
                     <>
                         <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -99,12 +120,35 @@ export function ChatMessage({ message, onEdit }: ChatMessageProps) {
                         >
                             {message.content}
                         </ReactMarkdown>
-                        <div className="msg-meta">
-                            <span className="msg-time">{formatTime(message.timestamp)}</span>
-                            <CopyButton text={message.content} />
-                        </div>
+                        {message.isStreaming && <span className="streaming-cursor" />}
                     </>
                 )}
+            </div>
+            
+            <div className={`msg-meta ${isUser ? 'msg-meta--user' : ''}`}>
+                {!isUser && (
+                    <>
+                        <span className="msg-time">{formatTime(message.timestamp)}</span>
+                        {isSpeaking && <AudioWaveform />}
+                        {onSpeak && !message.isStreaming && (
+                            <button
+                                className={`copy-btn voice-btn ${isSpeaking ? 'voice-btn--active' : ''}`}
+                                onClick={() => onSpeak(message.content, message.id)}
+                                title={isSpeaking ? "Stop speaking" : "Listen out loud"}
+                            >
+                                {isSpeaking ? <Square size={12} fill="currentColor" /> : <Volume2 size={13} />}
+                                <span>{isSpeaking ? 'Stop' : 'Listen'}</span>
+                            </button>
+                        )}
+                    </>
+                )}
+                {isUser && onEdit && (
+                    <button className="copy-btn" onClick={() => onEdit(message.content)} title="Edit">
+                        <Pencil size={13} />
+                        <span>Edit</span>
+                    </button>
+                )}
+                <CopyButton text={message.content} />
             </div>
         </motion.div>
     );

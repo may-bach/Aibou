@@ -8,6 +8,7 @@ critic_llm = ChatOpenAI(
     model=settings.MODEL_ARCHITECT,
     base_url=f"{settings.LOCAL_LLM_URL}/v1",
     api_key=settings.LOCAL_LLM_API_KEY,
+    streaming=True,
     temperature=0.1
 )
 
@@ -16,7 +17,7 @@ with open(CRITIC_PROMPT_PATH, "r", encoding="utf-8") as file:
     CRITIC_PROMPT = file.read()
 
 async def critic_node(state: AibouState) -> dict:
-    print("[NODE] Critic is reviewing the execution output...")
+    print("[NODE: CRITIC] Reviewing execution output...")
     
     execution_output = state.get("execution_output", "")
     
@@ -26,6 +27,6 @@ async def critic_node(state: AibouState) -> dict:
     response = await critic_llm.ainvoke([system_prompt, user_prompt])
     
     return {
-        "messages": [AIMessage(content=f"Critic Review:\n{response.content}")],
+        "messages": [AIMessage(content=f"### Critic Review\n\n{response.content}")],
         "current_agent": "Critic"
     }

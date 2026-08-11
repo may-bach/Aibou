@@ -10,6 +10,8 @@ interface ChatAreaProps {
     activeNode: string | null;
     onSuggestion: (text: string) => void;
     onEdit: (text: string) => void;
+    onSpeak?: (text: string, messageId: string) => void;
+    currentSpeakingId?: string | null;
 }
 
 const SUGGESTIONS = [
@@ -19,7 +21,14 @@ const SUGGESTIONS = [
     'Debug this: list index out of range',
 ];
 
-export function ChatArea({ messages, activeNode, onSuggestion, onEdit }: ChatAreaProps) {
+export function ChatArea({
+    messages,
+    activeNode,
+    onSuggestion,
+    onEdit,
+    onSpeak,
+    currentSpeakingId
+}: ChatAreaProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -59,7 +68,8 @@ export function ChatArea({ messages, activeNode, onSuggestion, onEdit }: ChatAre
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.2, duration: 0.3 }}
                     >
-                        Your local AI assistant — code, questions, creative writing.
+                        Your local AI companion: code, questions, creative writing & voice.
+
                     </motion.p>
                     <motion.div
                         className="suggestions"
@@ -93,7 +103,13 @@ export function ChatArea({ messages, activeNode, onSuggestion, onEdit }: ChatAre
                 >
                     <div className="chat-feed">
                         {messages.map((msg) => (
-                            <ChatMessage key={msg.id} message={msg} onEdit={onEdit} />
+                            <ChatMessage
+                                key={msg.id}
+                                message={msg}
+                                onEdit={onEdit}
+                                onSpeak={onSpeak}
+                                isSpeaking={currentSpeakingId === msg.id}
+                            />
                         ))}
                         {activeNode && <ThinkingIndicator activeNode={activeNode} />}
                         <div ref={bottomRef} />
